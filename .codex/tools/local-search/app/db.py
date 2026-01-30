@@ -29,6 +29,7 @@ class SearchOptions:
     query: str = ""
     repo: Optional[str] = None
     limit: int = 20
+    offset: int = 0  # v2.5.0: Added offset
     snippet_lines: int = 5
     # New in v2.3.1
     file_types: list[str] = field(default_factory=list)  # e.g., ["py", "ts"]
@@ -217,6 +218,14 @@ class LocalSearchDB:
         row = self._read.execute("SELECT COUNT(1) AS c FROM files").fetchone()
         return int(row["c"]) if row else 0
 
+    def get_repo_stats(self) -> dict[str, int]:
+        """Get file counts per repo (v2.5.0)."""
+        try:
+            rows = self._read.execute("SELECT repo, COUNT(1) as c FROM files GROUP BY repo").fetchall()
+            return {r["repo"]: r["c"] for r in rows}
+        except Exception:
+            return {}
+
     def upsert_repo_meta(self, repo_name: str, tags: str = "", domain: str = "", description: str = "", priority: int = 0) -> None:
         """Upsert repository metadata (v2.4.3)."""
         with self._lock:
@@ -240,7 +249,7 @@ class LocalSearchDB:
         return {row["repo_name"]: dict(row) for row in rows}
 
     def list_files(
-        self, 
+        self,
         repo: Optional[str] = None,
         path_pattern: Optional[str] = None,
         file_types: Optional[list[str]] = None,
@@ -248,19 +257,7 @@ class LocalSearchDB:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        """List indexed files for debugging (v2.4.0).
-        
-        Args:
-            repo: Filter by repository
-            path_pattern: Glob pattern for path matching
-            file_types: Filter by file extensions
-            include_hidden: Include hidden directories like .codex
-            limit: Maximum results (max 500)
-            offset: Pagination offset
-            
-        Returns:
-            tuple of (files, metadata)
-        """
+        """List indexed files for debugging (v2.4.0)."""
         limit = min(int(limit), 500)
         offset = max(int(offset), 0)
         
@@ -272,7 +269,6 @@ class LocalSearchDB:
             params.append(repo)
         
         if not include_hidden:
-            # Exclude hidden directories by default
             where_clauses.append("f.path NOT LIKE '%/.%'")
             where_clauses.append("f.path NOT LIKE '.%'")
         
@@ -292,20 +288,13 @@ class LocalSearchDB:
         
         rows = self._read.execute(sql, params).fetchall()
         
-        # Apply in-memory filters that SQL can't handle well
         files: list[dict[str, Any]] = []
         for r in rows:
             path = r["path"]
-            
-            # File type filter
-            if file_types:
-                if not self._matches_file_types(path, file_types):
-                    continue
-            
-            # Path pattern filter
-            if path_pattern:
-                if not self._matches_path_pattern(path, path_pattern):
-                    continue
+            if file_types and not self._matches_file_types(path, file_types):
+                continue
+            if path_pattern and not self._matches_path_pattern(path, path_pattern):
+                continue
             
             files.append({
                 "repo": r["repo"],
@@ -315,12 +304,10 @@ class LocalSearchDB:
                 "file_type": self._get_file_extension(path),
             })
         
-        # Get total count for pagination info
         count_sql = f"SELECT COUNT(1) AS c FROM files f WHERE {where}"
-        count_params = params[:-2]  # Remove limit/offset
+        count_params = params[:-2]
         total = self._read.execute(count_sql, count_params).fetchone()["c"]
         
-        # Get repo breakdown
         repo_sql = """
             SELECT repo, COUNT(1) AS file_count
             FROM files
@@ -341,28 +328,24 @@ class LocalSearchDB:
         
         return files, meta
 
-    # ========== Helper Methods ==========
+    # ========== Helper Methods ========== 
     
     def _get_file_extension(self, path: str) -> str:
-        """Extract file extension without dot."""
         ext = Path(path).suffix
         return ext[1:].lower() if ext else ""
     
     def _matches_file_types(self, path: str, file_types: list[str]) -> bool:
-        """Check if path matches any of the file types."""
         if not file_types:
             return True
         ext = self._get_file_extension(path)
         return ext in [ft.lower().lstrip('.') for ft in file_types]
     
     def _matches_path_pattern(self, path: str, pattern: Optional[str]) -> bool:
-        """Check if path matches glob pattern."""
         if not pattern:
             return True
         return fnmatch.fnmatch(path, pattern) or fnmatch.fnmatch(path, f"**/{pattern}")
     
     def _matches_exclude_patterns(self, path: str, patterns: list[str]) -> bool:
-        """Check if path matches any exclude pattern."""
         if not patterns:
             return False
         for p in patterns:
@@ -371,7 +354,6 @@ class LocalSearchDB:
         return False
     
     def _count_matches(self, content: str, query: str, use_regex: bool, case_sensitive: bool) -> int:
-        """Count number of matches in content."""
         if use_regex:
             flags = 0 if case_sensitive else re.IGNORECASE
             try:
@@ -384,11 +366,8 @@ class LocalSearchDB:
             return content.lower().count(query.lower())
     
     def _calculate_recency_score(self, mtime: int, base_score: float) -> float:
-        """Apply recency boost to score. Recent files get higher scores."""
         now = time.time()
-        age_days = (now - mtime) / 86400  # seconds -> days
-        
-        # Boost factor: 1.5x for today, decreasing over time
+        age_days = (now - mtime) / 86400
         if age_days < 1:
             boost = 1.5
         elif age_days < 7:
@@ -397,7 +376,6 @@ class LocalSearchDB:
             boost = 1.1
         else:
             boost = 1.0
-        
         return base_score * boost
 
     def _extract_terms(self, q: str) -> list[str]:
@@ -415,7 +393,6 @@ class LocalSearchDB:
 
     def _snippet_around(self, content: str, terms: list[str], max_lines: int, 
                         highlight: bool = True) -> str:
-        """Extract snippet around match with optional highlighting."""
         if max_lines <= 0:
             return ""
         lines = content.splitlines()
@@ -445,7 +422,6 @@ class LocalSearchDB:
         out_lines = []
         for i in range(start, end):
             line = lines[i]
-            # Highlight matched term
             if highlight and matched_term:
                 pattern = re.compile(re.escape(matched_term), re.IGNORECASE)
                 line = pattern.sub(f">>>{matched_term}<<<", line)
@@ -453,22 +429,18 @@ class LocalSearchDB:
             out_lines.append(f"{prefix}L{i+1}: {line}")
         return "\n".join(out_lines)
 
-    # ========== Main Search Methods ==========
+    # ========== Main Search Methods ========== 
 
     def search_v2(self, opts: SearchOptions) -> tuple[list[SearchHit], dict[str, Any]]:
-        """Enhanced search with all options (v2.3.1).
-        
-        Returns:
-            tuple of (hits, metadata)
-        """
+        """Enhanced search with all options (v2.3.1)."""
         q = (opts.query or "").strip()
         if not q:
-            return [], {"fallback_used": False, "total_scanned": 0}
+            return [], {"fallback_used": False, "total_scanned": 0, "total": 0}
 
         terms = self._extract_terms(q)
         meta: dict[str, Any] = {"fallback_used": False, "total_scanned": 0}
         
-        # Regex mode: scan all matching files
+        # Regex mode
         if opts.use_regex:
             return self._search_regex(opts, terms, meta)
         
@@ -477,23 +449,37 @@ class LocalSearchDB:
             result = self._search_fts(opts, terms, meta)
             if result is not None:
                 return result
-            # Fall through to LIKE if FTS fails
         
         # LIKE fallback
         return self._search_like(opts, terms, meta)
 
     def _search_fts(self, opts: SearchOptions, terms: list[str], 
                     meta: dict[str, Any]) -> Optional[tuple[list[SearchHit], dict[str, Any]]]:
-        """FTS5 search with BM25 scoring."""
         where = "files_fts MATCH ?"
         params: list[Any] = [opts.query]
         
         if opts.repo:
             where += " AND f.repo = ?"
             params.append(opts.repo)
+            
+        # Get total count first
+        try:
+            count_sql = f"SELECT COUNT(*) as c FROM files_fts JOIN files f ON f.rowid = files_fts.rowid WHERE {where}"
+            count_row = self._read.execute(count_sql, params).fetchone()
+            total_hits = int(count_row["c"]) if count_row else 0
+        except sqlite3.OperationalError:
+            return None # FTS failed
+            
+        meta["total"] = total_hits
 
-        # Need to fetch more to filter, then limit
-        fetch_limit = opts.limit * 5 if (opts.file_types or opts.path_pattern or opts.exclude_patterns) else opts.limit
+        # Fetch enough to re-rank and skip offset
+        # We need to fetch (offset + limit) + buffer
+        # Buffer is important because Python post-processing (filtering) might remove some rows
+        # But here filtering is mostly done in SQL match, except for file filters that we can't do in FTS easy?
+        # Actually file filters are not in SQL for FTS table above. So we need to fetch MORE.
+        
+        fetch_limit = (opts.offset + opts.limit) * 2 # Heuristic buffer for file_types/patterns
+        if fetch_limit < 100: fetch_limit = 100
         
         sql = f"""
             SELECT f.repo AS repo,
@@ -510,29 +496,35 @@ class LocalSearchDB:
         """
         params.append(int(fetch_limit))
         
-        try:
-            rows = self._read.execute(sql, params).fetchall()
-        except sqlite3.OperationalError:
-            return None  # Fall back to LIKE
+        rows = self._read.execute(sql, params).fetchall()
         
         hits = self._process_rows(rows, opts, terms)
         meta["total_scanned"] = len(rows)
-        return hits[:opts.limit], meta
+        
+        # Slice for pagination
+        start = opts.offset
+        end = opts.offset + opts.limit
+        return hits[start:end], meta
 
     def _search_like(self, opts: SearchOptions, terms: list[str], 
                      meta: dict[str, Any]) -> tuple[list[SearchHit], dict[str, Any]]:
-        """LIKE fallback search."""
         meta["fallback_used"] = True
         
-        like_q = opts.query.replace("%", "\\%").replace("_", "\\_")
-        where = "f.content LIKE ? ESCAPE '\\'"
+        like_q = opts.query.replace("^", "^^").replace("%", "^%").replace("_", "^_")
+        where = "f.content LIKE ? ESCAPE '^'"
         params: list[Any] = [f"%{like_q}%"]
         
         if opts.repo:
             where += " AND f.repo = ?"
             params.append(opts.repo)
+            
+        # Total count
+        count_sql = f"SELECT COUNT(*) as c FROM files f WHERE {where}"
+        count_row = self._read.execute(count_sql, params).fetchone()
+        meta["total"] = int(count_row["c"]) if count_row else 0
 
-        fetch_limit = opts.limit * 5 if (opts.file_types or opts.path_pattern or opts.exclude_patterns) else opts.limit
+        fetch_limit = (opts.offset + opts.limit) * 2
+        if fetch_limit < 100: fetch_limit = 100
         
         sql = f"""
             SELECT f.repo AS repo,
@@ -551,14 +543,15 @@ class LocalSearchDB:
         
         hits = self._process_rows(rows, opts, terms)
         meta["total_scanned"] = len(rows)
-        return hits[:opts.limit], meta
+        
+        start = opts.offset
+        end = opts.offset + opts.limit
+        return hits[start:end], meta
 
     def _search_regex(self, opts: SearchOptions, terms: list[str], 
                       meta: dict[str, Any]) -> tuple[list[SearchHit], dict[str, Any]]:
-        """Regex search mode."""
         meta["regex_mode"] = True
         
-        # Validate regex
         flags = 0 if opts.case_sensitive else re.IGNORECASE
         try:
             pattern = re.compile(opts.query, flags)
@@ -572,7 +565,10 @@ class LocalSearchDB:
             where = "f.repo = ?"
             params.append(opts.repo)
         
-        # Scan files (limited for performance)
+        # Regex scans everything (capped), so "total" is just "found hits" roughly
+        # We can't know total without scanning all.
+        # We'll just set total = len(hits) found within limit.
+        
         sql = f"""
             SELECT f.repo AS repo,
                    f.path AS path,
@@ -592,7 +588,6 @@ class LocalSearchDB:
             path = r["path"]
             content = r["content"] or ""
             
-            # Apply filters
             if not self._matches_file_types(path, opts.file_types):
                 continue
             if not self._matches_path_pattern(path, opts.path_pattern):
@@ -600,7 +595,6 @@ class LocalSearchDB:
             if self._matches_exclude_patterns(path, opts.exclude_patterns):
                 continue
             
-            # Check regex match
             matches = pattern.findall(content)
             if not matches:
                 continue
@@ -623,21 +617,24 @@ class LocalSearchDB:
                 file_type=self._get_file_extension(path),
             ))
         
-        # Sort by score (match count + recency)
+        # Sort by score (stable: score DESC, mtime DESC, path ASC)
+        hits.sort(key=lambda h: h.path)
+        hits.sort(key=lambda h: h.mtime, reverse=True)
         hits.sort(key=lambda h: h.score, reverse=True)
-        return hits[:opts.limit], meta
+        
+        meta["total"] = len(hits) # For regex, total is what we found in the scan
+        
+        start = opts.offset
+        end = opts.offset + opts.limit
+        return hits[start:end], meta
 
     def _process_rows(self, rows: list, opts: SearchOptions, 
                       terms: list[str]) -> list[SearchHit]:
-        """Process raw DB rows into SearchHit objects with enhanced ranking."""
         hits: list[SearchHit] = []
         
         all_meta = self.get_all_repo_meta()
         query_terms = [t.lower() for t in terms]
         query_raw_lower = opts.query.lower()
-        
-        # Pre-compile symbol regex for performance
-        # Matches: class X, def X, function X, struct X, pub fn X, async def X
         symbol_pattern = re.compile(r"^\s*(class|def|function|struct|pub\s+fn|async\s+def|interface|type)\s+", re.MULTILINE)
 
         for r in rows:
@@ -647,7 +644,6 @@ class LocalSearchDB:
             mtime = int(r["mtime"])
             size = int(r["size"])
             
-            # Apply filters
             if not self._matches_file_types(path, opts.file_types):
                 continue
             if not self._matches_path_pattern(path, opts.path_pattern):
@@ -655,10 +651,8 @@ class LocalSearchDB:
             if self._matches_exclude_patterns(path, opts.exclude_patterns):
                 continue
             
-            # Calculate score (negate BM25 if applicable)
             base_score = float(r["score"]) if r["score"] is not None else 0.0
             score = -base_score if base_score < 0 else base_score
-            
             reasons = []
             
             path_lower = path.lower()
@@ -666,8 +660,6 @@ class LocalSearchDB:
             filename = path_parts[-1]
             file_stem = Path(filename).stem
 
-            # 1. Exact Match Boost (Highest Priority)
-            # Compare with file stem (auth.py -> auth)
             if file_stem == query_raw_lower:
                 score += 50.0
                 reasons.append("Exact filename match")
@@ -675,52 +667,39 @@ class LocalSearchDB:
                 score += 40.0
                 reasons.append("Path suffix match")
             
-            # 2. Path Segment / Filename Boost
-            # If query is part of filename or a path segment
             if query_raw_lower in filename:
                 score += 20.0
                 reasons.append("Filename match")
             
-            for part in path_parts[:-1]: # Check dirs
+            for part in path_parts[:-1]:
                 if part == query_raw_lower:
                     score += 15.0
                     reasons.append(f"Dir match ({part})")
-                    break # Count once
+                    break
             
-            # 3. MSA Meta Boost (v2.4.3)
-            meta = all_meta.get(repo_name)
-            if meta:
-                # Priority boost
-                if meta["priority"] > 0:
-                    score += meta["priority"]
+            meta_obj = all_meta.get(repo_name)
+            if meta_obj:
+                if meta_obj["priority"] > 0:
+                    score += meta_obj["priority"]
                     reasons.append("High priority")
-                
-                # Tag/Domain match boost
-                tags = meta["tags"].lower().split(",")
-                domain = meta["domain"].lower()
+                tags = meta_obj["tags"].lower().split(",")
+                domain = meta_obj["domain"].lower()
                 for term in query_terms:
                     if term in tags or term == domain:
                         score += 5.0
                         reasons.append(f"Tag match ({term})")
-                        break # Only boost once for tags
+                        break
             
-            # 4. Core File Boost (v2.4.3)
             if any(p in path_lower for p in [".codex/", "agents.md", "gemini.md", "readme.md"]):
                 score += 2.0
                 reasons.append("Core file")
             
-            # 5. Recency Boost
             if opts.recency_boost:
                 score = self._calculate_recency_score(mtime, score)
             
-            # Count matches
             match_count = self._count_matches(content, opts.query, False, opts.case_sensitive)
-            
-            # Generate snippet
             snippet = self._snippet_around(content, terms, opts.snippet_lines, highlight=True)
             
-            # 6. Symbol Definition Boost (Content analysis)
-            # Check if snippet contains definition patterns
             if symbol_pattern.search(snippet):
                 score += 10.0
                 reasons.append("Symbol definition")
@@ -737,11 +716,11 @@ class LocalSearchDB:
                 hit_reason=", ".join(reasons) if reasons else "Content match"
             ))
         
-        # Sort by score
+        # Sort by score (stable: score DESC, mtime DESC, path ASC)
+        hits.sort(key=lambda h: h.path)
+        hits.sort(key=lambda h: h.mtime, reverse=True)
         hits.sort(key=lambda h: h.score, reverse=True)
         return hits
-
-    # ========== Legacy Search (backward compatible) ==========
 
     def search(
         self,
@@ -750,7 +729,6 @@ class LocalSearchDB:
         limit: int = 20,
         snippet_max_lines: int = 5,
     ) -> tuple[list[SearchHit], dict[str, Any]]:
-        """Legacy search method for backward compatibility."""
         opts = SearchOptions(
             query=q,
             repo=repo,
@@ -760,7 +738,6 @@ class LocalSearchDB:
         return self.search_v2(opts)
 
     def repo_candidates(self, q: str, limit: int = 3) -> list[dict[str, Any]]:
-        """Return top candidate repos for a query with tiny evidence."""
         q = (q or "").strip()
         if not q:
             return []
@@ -791,12 +768,11 @@ class LocalSearchDB:
             except sqlite3.OperationalError:
                 pass
 
-        # LIKE fallback
-        like_q = q.replace("%", "\\%").replace("_", "\\_")
+        like_q = q.replace("^", "^^").replace("%", "^%").replace("_", "^_")
         sql = """
             SELECT repo, COUNT(1) AS c
             FROM files
-            WHERE content LIKE ? ESCAPE '\\'
+            WHERE content LIKE ? ESCAPE '^'
             GROUP BY repo
             ORDER BY c DESC
             LIMIT ?;

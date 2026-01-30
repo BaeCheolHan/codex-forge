@@ -3,13 +3,10 @@
 MCP Server for Local Search (STDIO mode)
 Follows Model Context Protocol specification: https://modelcontextprotocol.io/specification/2025-11-25
 
-v2.3.1 enhancements:
-- File type filtering (file_types)
-- Path pattern matching (path_pattern)
-- Exclude patterns (exclude_patterns)
-- Recency boost (recency_boost)
-- Regex search mode (use_regex)
-- Enhanced search results with metadata
+v2.5.0 enhancements:
+- Search pagination (offset, total, has_more)
+- Detailed status stats (repo_stats)
+- Improved UX (root display, fallback reasons)
 
 Usage:
   python3 .codex/tools/local-search/mcp/server.py
@@ -40,7 +37,7 @@ class LocalSearchMCPServer:
     
     PROTOCOL_VERSION = "2025-11-25"
     SERVER_NAME = "local-search"
-    SERVER_VERSION = "2.4.3"  # MSA-aware Search & Result Grouping
+    SERVER_VERSION = "2.5.0"  # Pagination & Status Details
     
     def __init__(self, workspace_root: str):
         self.workspace_root = workspace_root
@@ -78,12 +75,8 @@ class LocalSearchMCPServer:
                     commit_batch_size=500,
                 )
             
-            # v2.4.1: Workspace-local DB path enforcement (multi-workspace support)
-            # DB is ALWAYS stored within the workspace to prevent conflicts
-            # Environment variable LOCAL_SEARCH_DB_PATH is only for debugging
             workspace_db_path = Path(self.workspace_root) / ".codex" / "tools" / "local-search" / "data" / "index.db"
             
-            # Debug override (only if explicitly set and not empty)
             debug_db_path = os.environ.get("LOCAL_SEARCH_DB_PATH", "").strip()
             if debug_db_path:
                 self._log_info(f"Using debug DB path override: {debug_db_path}")
@@ -135,18 +128,18 @@ class LocalSearchMCPServer:
         self._ensure_initialized()
     
     def handle_tools_list(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle tools/list request - v2.3.1 enhanced schema."""
+        """Handle tools/list request - v2.5.0 enhanced schema."""
         return {
             "tools": [
                 {
                     "name": "search",
-                    "description": "Enhanced search for code/files. Use BEFORE file exploration to save tokens. Supports file type filtering, path patterns, regex, and recency boost.",
+                    "description": "Enhanced search for code/files with pagination. Use BEFORE file exploration to save tokens.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "query": {
                                 "type": "string",
-                                "description": "Search query (keywords, function names, class names, or regex pattern)",
+                                "description": "Search query (keywords, function names, regex)",
                             },
                             "repo": {
                                 "type": "string",
@@ -157,11 +150,15 @@ class LocalSearchMCPServer:
                                 "description": "Maximum results (default: 10, max: 50)",
                                 "default": 10,
                             },
-                            # v2.3.1 new options
+                            "offset": {
+                                "type": "integer",
+                                "description": "Pagination offset (default: 0)",
+                                "default": 0,
+                            },
                             "file_types": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "Filter by file extensions, e.g., ['py', 'ts', 'java']",
+                                "description": "Filter by file extensions, e.g., ['py', 'ts']",
                             },
                             "path_pattern": {
                                 "type": "string",
@@ -170,7 +167,7 @@ class LocalSearchMCPServer:
                             "exclude_patterns": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "Patterns to exclude, e.g., ['node_modules', 'test']",
+                                "description": "Patterns to exclude, e.g., ['node_modules']",
                             },
                             "recency_boost": {
                                 "type": "boolean",
@@ -184,7 +181,7 @@ class LocalSearchMCPServer:
                             },
                             "case_sensitive": {
                                 "type": "boolean",
-                                "description": "Case-sensitive search for regex mode (default: false)",
+                                "description": "Case-sensitive search (default: false)",
                                 "default": False,
                             },
                             "context_lines": {
@@ -194,12 +191,12 @@ class LocalSearchMCPServer:
                              },
                             "scope": {
                                 "type": "string",
-                                "description": "Search scope: 'workspace' or repo name (alias for 'repo')",
+                                "description": "Alias for 'repo'",
                             },
                             "type": {
                                 "type": "string",
                                 "enum": ["docs", "code"],
-                                "description": "Filter by type: 'docs' (md, txt, pdf, docx) or 'code' (all other indexed)",
+                                "description": "Filter by type: 'docs' or 'code'",
                             },
                          },
                         "required": ["query"],
@@ -207,15 +204,21 @@ class LocalSearchMCPServer:
                 },
                 {
                     "name": "status",
-                    "description": "Get indexer status (index ready, scanned files, etc.)",
+                    "description": "Get indexer status. Use details=true for per-repo stats.",
                     "inputSchema": {
                         "type": "object",
-                        "properties": {},
+                        "properties": {
+                            "details": {
+                                "type": "boolean",
+                                "description": "Include detailed repo stats (default: false)",
+                                "default": False,
+                            }
+                        },
                     },
                 },
                 {
                     "name": "repo_candidates",
-                    "description": "Find candidate repositories for a query. Use when user doesn't specify which repo to work on. Returns candidates with selection reasons.",
+                    "description": "Find candidate repositories for a query.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -234,7 +237,7 @@ class LocalSearchMCPServer:
                 },
                 {
                     "name": "list_files",
-                    "description": "List indexed files for debugging. Shows which files are in the index. Use to verify indexing status.",
+                    "description": "List indexed files for debugging.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -244,21 +247,21 @@ class LocalSearchMCPServer:
                             },
                             "path_pattern": {
                                 "type": "string",
-                                "description": "Glob pattern for path matching, e.g., 'src/**/*.ts'",
+                                "description": "Glob pattern for path matching",
                             },
                             "file_types": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "Filter by file extensions, e.g., ['py', 'ts']",
+                                "description": "Filter by file extensions",
                             },
                             "include_hidden": {
                                 "type": "boolean",
-                                "description": "Include hidden directories like .codex (default: false)",
+                                "description": "Include hidden directories (default: false)",
                                 "default": False,
                             },
                             "limit": {
                                 "type": "integer",
-                                "description": "Maximum results (default: 100, max: 500)",
+                                "description": "Maximum results (default: 100)",
                                 "default": 100,
                             },
                             "offset": {
@@ -290,7 +293,7 @@ class LocalSearchMCPServer:
             raise ValueError(f"Unknown tool: {tool_name}")
     
     def _tool_search(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute enhanced search tool (v2.3.1)."""
+        """Execute enhanced search tool (v2.5.0)."""
         query = args.get("query", "")
         
         if not query.strip():
@@ -299,26 +302,24 @@ class LocalSearchMCPServer:
                 "isError": True,
             }
         
-        # Build SearchOptions from args
         repo = args.get("scope") or args.get("repo")
         if repo == "workspace":
             repo = None
         
         file_types = list(args.get("file_types", []))
-        
-        # Preset 'type' logic (v2.4.3)
         search_type = args.get("type")
         if search_type == "docs":
             doc_exts = ["md", "txt", "pdf", "docx", "rst", "pdf"]
             file_types.extend([e for e in doc_exts if e not in file_types])
-        elif search_type == "code":
-            # Just a hint for now, could be used for exclusion of docs if needed
-            pass
+        
+        limit = min(int(args.get("limit", 10)), 50)
+        offset = max(int(args.get("offset", 0)), 0)
 
         opts = SearchOptions(
             query=query,
             repo=repo,
-            limit=min(int(args.get("limit", 10)), 50),
+            limit=limit,
+            offset=offset,
             snippet_lines=int(args.get("context_lines", 5)),
             file_types=file_types,
             path_pattern=args.get("path_pattern"),
@@ -332,14 +333,17 @@ class LocalSearchMCPServer:
         
         results: List[Dict[str, Any]] = []
         for hit in hits:
+            # UX: Remap __root__ to (root)
+            repo_display = hit.repo if hit.repo != "__root__" else "(root)"
+            
             result = {
                 "repo": hit.repo,
+                "repo_display": repo_display,
                 "path": hit.path,
                 "score": hit.score,
                 "reason": hit.hit_reason,
                 "snippet": hit.snippet,
             }
-            # Include enhanced metadata
             if hit.mtime > 0:
                 result["mtime"] = hit.mtime
             if hit.size > 0:
@@ -350,7 +354,7 @@ class LocalSearchMCPServer:
                 result["file_type"] = hit.file_type
             results.append(result)
         
-        # v2.4.3 Result Grouping & Summary
+        # Result Grouping
         repo_groups = {}
         for r in results:
             repo = r["repo"]
@@ -360,66 +364,76 @@ class LocalSearchMCPServer:
             repo_groups[repo]["top_score"] = max(repo_groups[repo]["top_score"], r["score"])
         
         # Sort repos by top_score
-        sorted_repos = sorted(repo_groups.keys(), key=lambda k: repo_groups[k]["top_score"], reverse=True)
-        top_repos = sorted_repos[:2]
+        top_repos = sorted(repo_groups.keys(), key=lambda k: repo_groups[k]["top_score"], reverse=True)[:2]
         
-        index_status = self.db.get_index_status()
         scope = f"repo:{opts.repo}" if opts.repo else "workspace"
         
+        # Total/HasMore Logic (Accuracy Warning)
+        is_exact_total = True
+        if opts.file_types or opts.path_pattern or opts.exclude_patterns:
+            is_exact_total = False
+        
+        total = db_meta.get("total", len(results))
+        has_more = total > (offset + limit)
+        
+        warnings = []
+        if has_more:
+            next_offset = offset + limit
+            warnings.append(f"More results available. Use offset={next_offset} to see next page.")
+        if not opts.repo and total > 50:
+            warnings.append("Many results found. Consider specifying 'repo' to filter.")
+        
+        # Determine fallback reason code
+        fallback_reason_code = None
+        if db_meta.get("fallback_used"):
+            fallback_reason_code = "FTS_FAILED" # General fallback
+        elif not results and total == 0:
+            fallback_reason_code = "NO_MATCHES"
+
+        regex_error = db_meta.get("regex_error")
+        if regex_error:
+             warnings.append(f"Regex Error: {regex_error}")
+
         output = {
             "query": query,
             "scope": scope,
-            "total_results": len(results),
-            "top_candidate_repos": top_repos,
+            "total": total,
+            "is_exact_total": is_exact_total,
+            "limit": limit,
+            "offset": offset,
+            "has_more": has_more,
+            "next_offset": offset + limit if has_more else None,
+            "warnings": warnings,
             "results": results,
             "repo_summary": repo_groups,
+            "top_candidate_repos": top_repos,
             "meta": {
                 "fallback_used": db_meta.get("fallback_used", False),
-                "total_scanned_in_db": db_meta.get("total_scanned", 0),
+                "fallback_reason_code": fallback_reason_code,
+                "total_scanned": db_meta.get("total_scanned", 0),
                 "regex_mode": db_meta.get("regex_mode", False),
-                "index_status": {
-                    "total_indexed_files": index_status["total_files"],
-                    "last_scan_time": index_status["last_scan_time"],
-                }
+                "regex_error": regex_error,
             },
         }
         
-        # Zero results handling & Hints
         if not results:
             reason = "No matches found."
             if opts.path_pattern or opts.file_types:
-                reason = "No matches found with current filters (path_pattern or file_types might be too restrictive)."
-            
+                reason = "No matches found with current filters."
             output["meta"]["fallback_reason"] = reason
             output["hints"] = [
-                "Try a broader query or remove filters (path_pattern, file_types).",
+                "Try a broader query or remove filters.",
                 "Check if the file is indexed using 'list_files' tool.",
                 "If searching for a specific pattern, try 'use_regex=true'."
             ]
-        elif len(results) >= opts.limit:
-            output["hints"] = [
-                f"Showing only top {opts.limit} results. Use 'limit' parameter to see more.",
-                "Try narrowing down using 'file_types' or 'path_pattern' to find exact files."
-            ]
-        
-        # Add filter info summary
-        filters_used = []
-        if opts.file_types:
-            filters_used.append(f"file_types={opts.file_types}")
-        if opts.path_pattern:
-            filters_used.append(f"path_pattern={opts.path_pattern}")
-        if opts.exclude_patterns:
-            filters_used.append(f"exclude={opts.exclude_patterns}")
-        if opts.use_regex:
-            filters_used.append("regex=true")
-        if filters_used:
-            output["active_filters"] = filters_used
         
         return {
             "content": [{"type": "text", "text": json.dumps(output, indent=2, ensure_ascii=False)}],
         }
     
     def _tool_status(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        details = bool(args.get("details", False))
+        
         status = {
             "index_ready": self.indexer.status.index_ready if self.indexer else False,
             "last_scan_ts": self.indexer.status.last_scan_ts if self.indexer else 0,
@@ -430,6 +444,9 @@ class LocalSearchMCPServer:
             "workspace_root": self.workspace_root,
             "server_version": self.SERVER_VERSION,
         }
+        
+        if details and self.db:
+            status["repo_stats"] = self.db.get_repo_stats()
         
         return {
             "content": [{"type": "text", "text": json.dumps(status, indent=2)}],
@@ -447,10 +464,8 @@ class LocalSearchMCPServer:
         
         candidates = self.db.repo_candidates(q=query, limit=limit)
         
-        # v2.4.0: Add selection reason for each candidate
         for candidate in candidates:
             score = candidate.get("score", 0)
-            evidence = candidate.get("evidence", "")
             if score >= 10:
                 reason = f"High match ({score} files contain '{query}')"
             elif score >= 5:
@@ -470,7 +485,6 @@ class LocalSearchMCPServer:
         }
     
     def _tool_list_files(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """List indexed files for debugging (v2.4.0)."""
         files, meta = self.db.list_files(
             repo=args.get("repo"),
             path_pattern=args.get("path_pattern"),
