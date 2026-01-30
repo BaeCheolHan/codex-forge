@@ -42,23 +42,21 @@ class Config:
         else:
             server_port = int(raw.get("server_port", 47777))
 
-        default_db_path_new = "~/.cache/local-search/index.sqlite3"
-        default_db_path_old = "~/.cache/codex-local-search/index.sqlite3"
-        db_path = raw.get("db_path", default_db_path_new)
+        # v2.5.0: Force workspace-local DB path to prevent cross-repo pollution.
+        # We no longer support ~/.cache/local-search/ defaults.
+        workspace_root = _expanduser(raw["workspace_root"])
+        default_db_path = os.path.join(workspace_root, ".codex", "tools", "local-search", "data", "index.db")
 
-        # Migrate legacy cache dir if using default path and legacy DB exists.
-        if db_path == default_db_path_new:
-            new_path = _expanduser(default_db_path_new)
-            old_path = _expanduser(default_db_path_old)
-            if not os.path.exists(new_path) and os.path.exists(old_path):
-                try:
-                    Path(new_path).parent.mkdir(parents=True, exist_ok=True)
-                    os.replace(old_path, new_path)
-                except Exception:
-                    db_path = default_db_path_old
+        # Allow override from config.json ONLY if it is an absolute path (debugging),
+        # otherwise fallback to workspace-local.
+        raw_db_path = raw.get("db_path", "")
+        if raw_db_path and os.path.isabs(_expanduser(raw_db_path)):
+            db_path = _expanduser(raw_db_path)
+        else:
+            db_path = default_db_path
 
         return Config(
-            workspace_root=_expanduser(raw["workspace_root"]),
+            workspace_root=workspace_root,
             server_host=raw.get("server_host", "127.0.0.1"),
             server_port=server_port,
             scan_interval_seconds=int(raw.get("scan_interval_seconds", 180)),
