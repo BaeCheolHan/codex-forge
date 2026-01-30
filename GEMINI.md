@@ -1,33 +1,34 @@
-# Codex Rules v2.4.2
+# Codex Rules v2.4.2 (Gemini CLI)
 
-> Codex CLI 진입점. 공유 룰은 `.codex/rules/`에 있습니다.
+> Gemini CLI용 진입점. Rules는 `.codex/` 폴더와 공유합니다.
 >
-> **v2.4.2 변경**: Multi-CLI 지원 - Codex CLI + Gemini CLI
+> **v2.4.2 변경**: Gemini CLI 지원 추가
 
-## 핵심 규칙
+## Rules
 
-아래 규칙 파일을 참조하세요:
+아래 규칙들이 자동으로 로드됩니다:
 
-- `.codex/rules/00-core.md` - 핵심 정책 (정본)
+@./.codex/rules/00-core.md
 
-## Quick Start
+## Quick Reference
 
-```
-/mcp                    # MCP 도구 상태 확인
-search query="keyword"  # local-search로 파일 검색
-```
+| 명령어 | 동작 |
+|--------|------|
+| `/memory show` | 로드된 컨텍스트 전체 확인 |
+| `/memory refresh` | 컨텍스트 파일 새로고침 |
+| `/mcp` | MCP 서버 상태 확인 |
+| `/help` | 도움말 |
 
 ## Local Search 사용법
 
 ### MCP 도구 (권장)
-codex-cli가 자동으로 local-search MCP 도구를 로드합니다.
+Gemini CLI가 자동으로 local-search MCP 도구를 로드합니다.
 `/mcp` 명령으로 상태 확인.
 
 사용 가능한 도구:
-- **search**: 키워드/정규식으로 파일/코드 검색
+- **search**: 키워드/정규식으로 파일/코드 검색 (토큰 절감 핵심!)
 - **status**: 인덱스 상태 확인
 - **repo_candidates**: 관련 repo 후보 찾기
-- **list_files**: 인덱싱된 파일 목록 조회 (v2.4.2)
 
 ### 토큰 절감 원칙
 파일 탐색 전 **반드시** local-search로 먼저 검색!
@@ -47,26 +48,25 @@ codex-cli가 자동으로 local-search MCP 도구를 로드합니다.
 
 ```
 workspace/
-├── AGENTS.md            # 이 파일 (Codex CLI 진입점)
-├── GEMINI.md            # Gemini CLI 진입점
 ├── .codex-root          # 마커
-├── .codex/
-│   ├── AGENTS.md        # 원본 (git 저장)
-│   ├── config.toml      # MCP 서버 설정
-│   ├── rules/           # 정책 (공유)
+├── .codex/              # 룰셋/도구 (공유)
+│   ├── rules/           # 정책 (Gemini CLI도 사용)
 │   ├── scenarios/       # 시나리오 가이드
 │   ├── skills/          # 스킬
 │   └── tools/           # local-search 등
+├── .gemini/             # Gemini CLI 설정
+│   └── settings.json
+├── GEMINI.md            # 이 파일
 ├── docs/                # 공유 문서
 └── [repos...]           # 실제 저장소들
 ```
+
+## Codex CLI 사용자
+
+Codex CLI를 사용하시면 `.codex/AGENTS.md`를 참조하세요.
 
 ## Navigation
 
 - 상세 규칙: `.codex/rules/00-core.md`
 - 온보딩: `.codex/quick-start.md`
 - 변경 이력: `docs/_meta/CHANGELOG.md`
-
-## Gemini CLI 사용자
-
-Gemini CLI를 사용하시면 `GEMINI.md`를 참조하세요.

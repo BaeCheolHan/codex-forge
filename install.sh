@@ -1,23 +1,25 @@
 #!/bin/bash
-# Codex Rules v2.3.3 - 원커맨드 설치 스크립트 (MCP 버전)
-# 사용법: ./install.sh [workspace_root] [--backup|--skip|--quit]
+# Codex Rules v2.4.2 - 원커맨드 설치 스크립트 (Multi-CLI 버전)
+# 사용법: ./install.sh [workspace_root] [--codex|--gemini|--all] [--backup|--skip|--quit]
 # - workspace_root 미지정 시: 현재 디렉토리를 workspace로 사용하고 git에서 소스를 내려받음
 # - git 소스: CODEX_RULES_REPO_URL/CODEX_RULES_REF 환경변수로 오버라이드 가능
 #
-# 주요 변경 (v2.3.3):
-#   - 경로 구조 변경: codex/ → .codex/, tools/ → .codex/tools/
-#   - 모든 경로 참조 업데이트
+# CLI 선택 옵션:
+#   --codex   Codex CLI만 설치
+#   --gemini  Gemini CLI만 설치
+#   --all     모두 설치 (기본값)
 #
-# v2.2.1 변경:
-#   - config.toml 보존 로직 수정 (사용자 설정 유실 방지)
-#   - 문서 zip 구조 안내 수정
-#   - 폴백 경로 정리
+# 주요 변경 (v2.4.2):
+#   - Multi-CLI 지원: Codex CLI + Gemini CLI
+#   - CLI 선택 옵션 추가: --codex, --gemini, --all
+#   - GEMINI.md, .gemini/settings.json 생성 지원
 
 set -euo pipefail
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m'
 
 echo_info() {
@@ -32,6 +34,10 @@ echo_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+echo_step() {
+    echo -e "${BLUE}[STEP]${NC} $1"
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_URL_DEFAULT="https://github.com/BaeCheolHan/codex-forge.git"
 REPO_URL="${CODEX_RULES_REPO_URL:-$REPO_URL_DEFAULT}"
@@ -39,6 +45,7 @@ REPO_REF="${CODEX_RULES_REF:-}"
 SOURCE_DIR="$SCRIPT_DIR"
 SOURCE_MODE="local"
 MODE=""
+CLI_MODE=""  # codex, gemini, all
 BACKUP_DIR=""
 HAD_RULES="no"
 SOURCE_SNAPSHOT_DIR=""
@@ -61,6 +68,9 @@ for arg in "$@"; do
         --backup) MODE="backup" ;;
         --skip) MODE="skip" ;;
         --quit) MODE="quit" ;;
+        --codex) CLI_MODE="codex" ;;
+        --gemini) CLI_MODE="gemini" ;;
+        --all) CLI_MODE="all" ;;
         *) 
             if [[ -z "$WORKSPACE_ROOT" && ! "$arg" == --* ]]; then
                 WORKSPACE_ROOT="$arg"
@@ -82,13 +92,32 @@ fi
 # Resolve to absolute path
 WORKSPACE_ROOT="$(cd "$WORKSPACE_ROOT" 2>/dev/null && pwd || echo "$WORKSPACE_ROOT")"
 
-echo_info "Codex Rules v2.3.3 설치 시작 (MCP 버전)"
+echo_info "Codex Rules v2.4.2 설치 시작 (Multi-CLI 버전)"
 echo_info "Workspace: $WORKSPACE_ROOT"
 if [[ "$SOURCE_MODE" == "git" ]]; then
     echo_info "Source: git (${REPO_URL}${REPO_REF:+@$REPO_REF})"
 else
     echo_info "Source: local ($SCRIPT_DIR)"
 fi
+echo ""
+
+# CLI 선택 프롬프트 (미지정 시)
+if [[ -z "$CLI_MODE" ]]; then
+    echo ""
+    echo "지원할 CLI를 선택하세요:"
+    echo "  1) Codex CLI만"
+    echo "  2) Gemini CLI만"
+    echo "  3) 모두 (권장)"
+    echo ""
+    read -rp "선택 (1/2/3) [3]: " cli_choice
+    case "$cli_choice" in
+        1|codex) CLI_MODE="codex" ;;
+        2|gemini) CLI_MODE="gemini" ;;
+        *) CLI_MODE="all" ;;
+    esac
+fi
+
+echo_info "CLI 모드: $CLI_MODE"
 echo ""
 
 # Create workspace if not exists
@@ -105,12 +134,12 @@ fi
 # If installing from the same repo, snapshot source before any backups/moves.
 if [[ "$SOURCE_MODE" == "local" && "$SOURCE_DIR" == "$WORKSPACE_ROOT" ]]; then
     SOURCE_SNAPSHOT_DIR="$(mktemp -d)"
-    for dir in ".codex" "docs"; do
+    for dir in ".codex" "docs" ".gemini"; do
         if [[ -d "$SOURCE_DIR/$dir" ]]; then
             cp -r "$SOURCE_DIR/$dir" "$SOURCE_SNAPSHOT_DIR/"
         fi
     done
-    for file in ".codex-root" "gitignore.sample"; do
+    for file in ".codex-root" "gitignore.sample" "GEMINI.md"; do
         if [[ -f "$SOURCE_DIR/$file" ]]; then
             cp "$SOURCE_DIR/$file" "$SOURCE_SNAPSHOT_DIR/"
         fi
@@ -139,11 +168,16 @@ if [[ ! -d "$SOURCE_DIR/.codex" || ! -d "$SOURCE_DIR/docs" ]]; then
     exit 1
 fi
 
-# Check for existing installations (v2.3.3: codex/, tools/ 제거됨)
+# Check for existing installations
 EXISTING_DIRS=()
-for dir in ".codex" "docs"; do
+for dir in ".codex" "docs" ".gemini"; do
     if [[ -d "$dir" ]]; then
         EXISTING_DIRS+=("$dir")
+    fi
+done
+for file in "GEMINI.md" "AGENTS.md"; do
+    if [[ -f "$file" ]]; then
+        EXISTING_DIRS+=("$file")
     fi
 done
 
@@ -170,8 +204,10 @@ if [[ ${#EXISTING_DIRS[@]} -gt 0 ]]; then
             BACKUP_DIR=".codex-backup-$(date +%Y%m%d%H%M%S)"
             echo_info "백업 생성: $BACKUP_DIR"
             mkdir -p "$BACKUP_DIR"
-            for dir in "${EXISTING_DIRS[@]}"; do
-                mv "$dir" "$BACKUP_DIR/"
+            for item in "${EXISTING_DIRS[@]}"; do
+                if [[ -e "$item" ]]; then
+                    mv "$item" "$BACKUP_DIR/"
+                fi
             done
             ;;
         skip)
@@ -183,103 +219,123 @@ if [[ ${#EXISTING_DIRS[@]} -gt 0 ]]; then
             echo ""
             echo "수동 설치 방법:"
             echo "  1. 기존 디렉토리 백업 또는 삭제"
-            echo "  2. 새 버전 압축 해제: unzip codex-rules-v2.3.3-workspace-msa.zip -d /tmp"
-            echo "  3. 파일 복사: cp -r /tmp/codex-rules-v2.3.3-workspace-msa/* $WORKSPACE_ROOT/"
-            echo "  4. 숨김 파일 복사: cp -r /tmp/codex-rules-v2.3.3-workspace-msa/.codex $WORKSPACE_ROOT/"
+            echo "  2. 새 버전 압축 해제: unzip codex-rules-v2.4.2.zip -d /tmp"
+            echo "  3. 파일 복사: cp -r /tmp/codex-rules-v2.4.2/* $WORKSPACE_ROOT/"
             exit 0
             ;;
     esac
 fi
 
-# Copy files
-echo_info "파일 복사 중..."
-
-copy_if_not_exists() {
-    local src="$1"
-    local dst="$2"
-    if [[ "$MODE" == "skip" && -e "$dst" ]]; then
-        return
+# =============================================================================
+# 공유 파일 설치 (Rules, Tools, Docs)
+# =============================================================================
+install_shared() {
+    echo_step "공유 파일 설치 중..."
+    
+    # Decide whether to overwrite rules
+    RULES_OVERWRITE="yes"
+    if [[ "$HAD_RULES" == "yes" ]]; then
+        echo ""
+        read -rp "기존 rules를 덮어쓸까요? (yes/no): " rules_choice
+        case "$rules_choice" in
+            y|Y|yes|YES) RULES_OVERWRITE="yes" ;;
+            *) RULES_OVERWRITE="no" ;;
+        esac
     fi
-    mkdir -p "$(dirname "$dst")"
-    cp -r "$src" "$dst"
+
+    # Copy docs
+    if [[ -d "$SOURCE_DIR/docs" ]]; then
+        if [[ "$MODE" == "skip" && -d "docs" ]]; then
+            echo_info "  docs/ 건너뜀 (이미 존재)"
+        else
+            cp -r "$SOURCE_DIR/docs" .
+            echo_info "  docs/ 복사 완료"
+        fi
+    fi
+
+    # Copy .codex (shared)
+    if [[ -d "$SOURCE_DIR/.codex" ]]; then
+        if [[ "$MODE" == "skip" && -d ".codex" ]]; then
+            echo_info "  .codex/ 건너뜀 (이미 존재)"
+        else
+            mkdir -p ".codex"
+            # 공통 파일 (CLI 무관) - AGENTS.md는 원본 룰
+            for item in quick-start.md AGENTS.md; do
+                if [[ -f "$SOURCE_DIR/.codex/$item" ]]; then
+                    cp "$SOURCE_DIR/.codex/$item" ".codex/$item"
+                fi
+            done
+            for dir in tools scenarios skills; do
+                if [[ -d "$SOURCE_DIR/.codex/$dir" ]]; then
+                    cp -r "$SOURCE_DIR/.codex/$dir" ".codex/"
+                fi
+            done
+            if [[ "$RULES_OVERWRITE" == "yes" ]]; then
+                if [[ -d "$SOURCE_DIR/.codex/rules" ]]; then
+                    cp -r "$SOURCE_DIR/.codex/rules" ".codex/"
+                fi
+            else
+                echo_info "  .codex/rules 건너뜀 (사용자 선택)"
+                if [[ -n "$BACKUP_DIR" && -d "$BACKUP_DIR/.codex/rules" ]]; then
+                    cp -r "$BACKUP_DIR/.codex/rules" ".codex/"
+                    echo_info "  .codex/rules 복원 (백업에서 유지)"
+                fi
+            fi
+            echo_info "  .codex/ 공유 파일 복사 완료"
+        fi
+    fi
+
+    # Copy root files
+    for file in ".codex-root" "gitignore.sample"; do
+        if [[ -f "$SOURCE_DIR/$file" ]]; then
+            if [[ "$MODE" == "skip" && -f "$file" ]]; then
+                continue
+            fi
+            cp "$SOURCE_DIR/$file" .
+        fi
+    done
+
+    # Create .codex-root if not exists
+    if [[ ! -f ".codex-root" ]]; then
+        touch .codex-root
+        echo_info ".codex-root 생성"
+    fi
+
+    echo_info "공유 파일 설치 완료"
 }
 
-# Decide whether to overwrite rules
-RULES_OVERWRITE="yes"
-if [[ "$HAD_RULES" == "yes" ]]; then
-    echo ""
-    read -rp "기존 rules를 덮어쓸까요? (yes/no): " rules_choice
-    case "$rules_choice" in
-        y|Y|yes|YES) RULES_OVERWRITE="yes" ;;
-        *) RULES_OVERWRITE="no" ;;
-    esac
-fi
-
-# Copy docs (can be skipped as a whole)
-if [[ -d "$SOURCE_DIR/docs" ]]; then
-    if [[ "$MODE" == "skip" && -d "docs" ]]; then
-        echo_info "  docs/ 건너뜀 (이미 존재)"
+# =============================================================================
+# Codex CLI 전용 파일 설치
+# =============================================================================
+install_codex_cli() {
+    echo_step "Codex CLI 파일 설치 중..."
+    
+    mkdir -p ".codex"
+    
+    # Root AGENTS.md는 .codex/AGENTS.md를 가리키는 포인터 파일로 생성
+    # (Codex CLI는 root에서 AGENTS.md를 읽으므로)
+    if [[ "$MODE" == "skip" && -f "AGENTS.md" ]]; then
+        echo_info "  AGENTS.md 건너뜀 (이미 존재)"
     else
-        cp -r "$SOURCE_DIR/docs" .
-        echo_info "  docs/ 복사 완료"
+        cat > "AGENTS.md" << 'AGENTS_EOF'
+# Codex Rules
+
+> 이 파일은 Codex CLI 진입점입니다.
+
+## 지침
+
+아래 파일의 모든 지침을 읽고 따르세요:
+
+1. **핵심 규칙**: `./.codex/AGENTS.md` - 전체 가이드라인
+2. **상세 정책**: `./.codex/rules/00-core.md` - 정책 정본
+
+위 파일들의 내용을 숙지하고 작업을 진행하세요.
+AGENTS_EOF
+        echo_info "  AGENTS.md 생성 완료 (포인터 → .codex/AGENTS.md)"
     fi
-fi
 
-# Copy .codex selectively (rules may be skipped; config is preserved)
-if [[ -d "$SOURCE_DIR/.codex" ]]; then
-    if [[ "$MODE" == "skip" && -d ".codex" ]]; then
-        echo_info "  .codex/ 건너뜀 (이미 존재)"
-    else
-        mkdir -p ".codex"
-        for item in AGENTS.md quick-start.md system-prompt.txt; do
-            if [[ -f "$SOURCE_DIR/.codex/$item" ]]; then
-                cp "$SOURCE_DIR/.codex/$item" ".codex/$item"
-            fi
-        done
-        for dir in tools scenarios skills; do
-            if [[ -d "$SOURCE_DIR/.codex/$dir" ]]; then
-                cp -r "$SOURCE_DIR/.codex/$dir" ".codex/"
-            fi
-        done
-        if [[ "$RULES_OVERWRITE" == "yes" ]]; then
-            if [[ -d "$SOURCE_DIR/.codex/rules" ]]; then
-                cp -r "$SOURCE_DIR/.codex/rules" ".codex/"
-            fi
-        else
-            echo_info "  .codex/rules 건너뜀 (사용자 선택)"
-            if [[ -n "$BACKUP_DIR" && -d "$BACKUP_DIR/.codex/rules" ]]; then
-                cp -r "$BACKUP_DIR/.codex/rules" ".codex/"
-                echo_info "  .codex/rules 복원 (백업에서 유지)"
-            fi
-        fi
-        # config.toml은 덮어쓰지 않음 (아래에서 병합 처리)
-        if [[ ! -f ".codex/config.toml" && -f "$SOURCE_DIR/.codex/config.toml" ]]; then
-            cp "$SOURCE_DIR/.codex/config.toml" ".codex/config.toml"
-        fi
-        echo_info "  .codex/ 복사 완료"
-    fi
-fi
-
-# Copy root files (v2.3.3: 대부분 .codex/ 또는 docs/_meta/로 이동됨)
-for file in ".codex-root" "gitignore.sample"; do
-    if [[ -f "$SOURCE_DIR/$file" ]]; then
-        if [[ "$MODE" == "skip" && -f "$file" ]]; then
-            continue
-        fi
-        cp "$SOURCE_DIR/$file" .
-    fi
-done
-
-# Create .codex-root if not exists
-if [[ ! -f ".codex-root" ]]; then
-    touch .codex-root
-    echo_info ".codex-root 생성"
-fi
-
-echo_info "루트 파일 복사 완료"
-
-# Ensure config.toml exists and has MCP server settings (do not overwrite)
-MCP_BLOCK=$(cat << 'MCP_EOF'
+    # config.toml 설정
+    MCP_BLOCK=$(cat << 'MCP_EOF'
 
 [mcp_servers.local-search]
 command = "python3"
@@ -288,28 +344,184 @@ startup_timeout_sec = 15
 tool_timeout_sec = 30
 
 [mcp_servers.local-search.env]
-# Workspace root auto-detection (v2.3.3):
+# Workspace root auto-detection (v2.4.2):
 # 1. CODEX_WORKSPACE_ROOT env var (if set)
 # 2. Search for .codex-root from cwd upward
 # 3. Fallback to cwd
-# Override: CODEX_WORKSPACE_ROOT = "/path/to/workspace"
 MCP_EOF
 )
 
-if [[ ! -f ".codex/config.toml" ]]; then
-    cat > ".codex/config.toml" << 'CFG_EOF'
-# Workspace-scoped Codex configuration (v2.3.3)
+    if [[ ! -f ".codex/config.toml" ]]; then
+        cat > ".codex/config.toml" << 'CFG_EOF'
+# Workspace-scoped Codex configuration (v2.4.2)
 CFG_EOF
-    echo "$MCP_BLOCK" >> ".codex/config.toml"
-    echo_info "config.toml 생성 + MCP 설정 추가"
-else
-    if ! grep -q "mcp_servers.local-search" ".codex/config.toml" 2>/dev/null; then
         echo "$MCP_BLOCK" >> ".codex/config.toml"
-        echo_info "MCP 서버 설정 추가 (사용자 설정 유지)"
+        echo_info "  config.toml 생성 + MCP 설정 추가"
     else
-        echo_info "MCP 서버 설정 이미 존재 (변경 없음)"
+        if ! grep -q "mcp_servers.local-search" ".codex/config.toml" 2>/dev/null; then
+            echo "$MCP_BLOCK" >> ".codex/config.toml"
+            echo_info "  MCP 서버 설정 추가 (사용자 설정 유지)"
+        else
+            echo_info "  MCP 서버 설정 이미 존재 (변경 없음)"
+        fi
     fi
-fi
+
+    echo_info "Codex CLI 파일 설치 완료"
+}
+
+# =============================================================================
+# Gemini CLI 전용 파일 설치
+# =============================================================================
+install_gemini_cli() {
+    echo_step "Gemini CLI 파일 설치 중..."
+    
+    # GEMINI.md (workspace root)
+    if [[ -f "$SOURCE_DIR/GEMINI.md" ]]; then
+        if [[ "$MODE" == "skip" && -f "GEMINI.md" ]]; then
+            echo_info "  GEMINI.md 건너뜀 (이미 존재)"
+        else
+            cp "$SOURCE_DIR/GEMINI.md" .
+            echo_info "  GEMINI.md 복사 완료"
+        fi
+    else
+        # 소스에 없으면 생성
+        if [[ ! -f "GEMINI.md" ]]; then
+            cat > "GEMINI.md" << 'GEMINI_EOF'
+# Codex Rules v2.4.2 (Gemini CLI)
+
+> Gemini CLI용 진입점. Rules는 `.codex/` 폴더와 공유합니다.
+>
+> **v2.4.2 변경**: Gemini CLI 지원 추가
+
+## Rules
+
+아래 규칙들이 자동으로 로드됩니다:
+
+@./.codex/rules/00-core.md
+
+## Quick Reference
+
+| 명령어 | 동작 |
+|--------|------|
+| `/memory show` | 로드된 컨텍스트 전체 확인 |
+| `/memory refresh` | 컨텍스트 파일 새로고침 |
+| `/mcp` | MCP 서버 상태 확인 |
+| `/help` | 도움말 |
+
+## Local Search 사용법
+
+### MCP 도구 (권장)
+Gemini CLI가 자동으로 local-search MCP 도구를 로드합니다.
+`/mcp` 명령으로 상태 확인.
+
+사용 가능한 도구:
+- **search**: 키워드/정규식으로 파일/코드 검색 (토큰 절감 핵심!)
+- **status**: 인덱스 상태 확인
+- **repo_candidates**: 관련 repo 후보 찾기
+
+### 토큰 절감 원칙
+파일 탐색 전 **반드시** local-search로 먼저 검색!
+- Before: 전체 탐색 → 12000 토큰
+- After: local-search → 900 토큰 (92% 절감)
+
+## Scenarios
+
+| 시나리오 | 경로 |
+|----------|------|
+| S0 Simple Fix | `.codex/scenarios/s0-simple-fix.md` |
+| S1 Feature | `.codex/scenarios/s1-feature.md` |
+| S2 Cross-repo | `.codex/scenarios/s2-cross-repo.md` |
+| Hotfix | `.codex/scenarios/hotfix.md` |
+
+## 디렉토리 구조
+
+```
+workspace/
+├── .codex-root          # 마커
+├── .codex/              # 룰셋/도구 (공유)
+│   ├── rules/           # 정책 (Gemini CLI도 사용)
+│   ├── scenarios/       # 시나리오 가이드
+│   ├── skills/          # 스킬
+│   └── tools/           # local-search 등
+├── .gemini/             # Gemini CLI 설정
+│   └── settings.json
+├── GEMINI.md            # 이 파일
+├── docs/                # 공유 문서
+└── [repos...]           # 실제 저장소들
+```
+
+## Codex CLI 사용자
+
+Codex CLI를 사용하시면 `.codex/AGENTS.md`를 참조하세요.
+
+## Navigation
+
+- 상세 규칙: `.codex/rules/00-core.md`
+- 온보딩: `.codex/quick-start.md`
+- 변경 이력: `docs/_meta/CHANGELOG.md`
+GEMINI_EOF
+            echo_info "  GEMINI.md 생성 완료"
+        fi
+    fi
+
+    # .gemini/settings.json
+    mkdir -p ".gemini"
+    if [[ -f "$SOURCE_DIR/.gemini/settings.json" ]]; then
+        if [[ "$MODE" == "skip" && -f ".gemini/settings.json" ]]; then
+            echo_info "  .gemini/settings.json 건너뜀 (이미 존재)"
+        else
+            cp "$SOURCE_DIR/.gemini/settings.json" ".gemini/"
+            echo_info "  .gemini/settings.json 복사 완료"
+        fi
+    else
+        # 소스에 없으면 생성
+        if [[ ! -f ".gemini/settings.json" ]]; then
+            cat > ".gemini/settings.json" << 'SETTINGS_EOF'
+{
+  "$schema": "https://raw.githubusercontent.com/google-gemini/gemini-cli/main/packages/core/src/settings/settings-schema.json",
+  "context": {
+    "fileName": ["GEMINI.md"]
+  },
+  "mcpServers": {
+    "local-search": {
+      "command": "python3",
+      "args": [".codex/tools/local-search/mcp/server.py"],
+      "timeout": 30000,
+      "trust": false
+    }
+  }
+}
+SETTINGS_EOF
+            echo_info "  .gemini/settings.json 생성 완료"
+        fi
+    fi
+
+    echo_info "Gemini CLI 파일 설치 완료"
+}
+
+# =============================================================================
+# 메인 설치 로직
+# =============================================================================
+echo_info "파일 복사 중..."
+
+# 1. 공유 파일 먼저 설치
+install_shared
+
+# 2. CLI 모드에 따라 설치
+case "$CLI_MODE" in
+    codex)
+        install_codex_cli
+        ;;
+    gemini)
+        install_gemini_cli
+        ;;
+    all)
+        install_codex_cli
+        install_gemini_cli
+        ;;
+esac
+
+echo_info "파일 복사 완료"
 
 # Check Python version
 echo_info "Python 버전 확인..."
@@ -321,38 +533,38 @@ else
     exit 1
 fi
 
-# Set up shell configuration for CODEX_HOME
-echo_info "셸 설정 파일 업데이트 중..."
+# Set up shell configuration for CODEX_HOME (only for codex/all)
+if [[ "$CLI_MODE" == "codex" || "$CLI_MODE" == "all" ]]; then
+    echo_info "셸 설정 파일 업데이트 중..."
 
-# Detect shell config file (v2.3.3: improved bash detection)
-if [[ -n "${ZSH_VERSION:-}" ]] || [[ "$SHELL" == *"zsh"* ]]; then
-    SHELL_RC="$HOME/.zshrc"
-elif [[ -n "${BASH_VERSION:-}" ]] || [[ "$SHELL" == *"bash"* ]]; then
-    # Prefer .bashrc for interactive shells (Linux/WSL), .bash_profile for macOS
-    if [[ -f "$HOME/.bashrc" ]]; then
-        SHELL_RC="$HOME/.bashrc"
-    elif [[ -f "$HOME/.bash_profile" ]]; then
-        SHELL_RC="$HOME/.bash_profile"
+    # Detect shell config file
+    if [[ -n "${ZSH_VERSION:-}" ]] || [[ "$SHELL" == *"zsh"* ]]; then
+        SHELL_RC="$HOME/.zshrc"
+    elif [[ -n "${BASH_VERSION:-}" ]] || [[ "$SHELL" == *"bash"* ]]; then
+        if [[ -f "$HOME/.bashrc" ]]; then
+            SHELL_RC="$HOME/.bashrc"
+        elif [[ -f "$HOME/.bash_profile" ]]; then
+            SHELL_RC="$HOME/.bash_profile"
+        else
+            SHELL_RC="$HOME/.bashrc"
+        fi
     else
-        SHELL_RC="$HOME/.bashrc"  # Create .bashrc if neither exists
+        SHELL_RC="$HOME/.profile"
     fi
-else
-    SHELL_RC="$HOME/.profile"
-fi
 
-# Check for existing CODEX_HOME
-if grep -q "CODEX_HOME" "$SHELL_RC" 2>/dev/null; then
-    EXISTING_CODEX_HOME=$(grep "CODEX_HOME=" "$SHELL_RC" | tail -1 | cut -d= -f2 | tr -d '"' | tr -d "'")
-    if [[ "$EXISTING_CODEX_HOME" != "$WORKSPACE_ROOT/.codex" ]]; then
-        echo_warn "기존 CODEX_HOME 발견: $EXISTING_CODEX_HOME"
-        echo_warn "새 workspace와 충돌할 수 있습니다. 수동 확인 권장."
+    # Check for existing CODEX_HOME
+    if grep -q "CODEX_HOME" "$SHELL_RC" 2>/dev/null; then
+        EXISTING_CODEX_HOME=$(grep "CODEX_HOME=" "$SHELL_RC" | tail -1 | cut -d= -f2 | tr -d '"' | tr -d "'")
+        if [[ "$EXISTING_CODEX_HOME" != "$WORKSPACE_ROOT/.codex" ]]; then
+            echo_warn "기존 CODEX_HOME 발견: $EXISTING_CODEX_HOME"
+            echo_warn "새 workspace와 충돌할 수 있습니다. 수동 확인 권장."
+        fi
+    else
+        echo "" >> "$SHELL_RC"
+        echo "# Codex Rules v2.4.2 - 자동 생성됨" >> "$SHELL_RC"
+        echo "export CODEX_HOME=\"$WORKSPACE_ROOT/.codex\"" >> "$SHELL_RC"
+        echo_info "  CODEX_HOME 환경변수 추가"
     fi
-else
-    # Add CODEX_HOME
-    echo "" >> "$SHELL_RC"
-    echo "# Codex Rules v2.3.3 - 자동 생성됨" >> "$SHELL_RC"
-    echo "export CODEX_HOME=\"$WORKSPACE_ROOT/.codex\"" >> "$SHELL_RC"
-    echo_info "  CODEX_HOME 환경변수 추가"
 fi
 
 # Test MCP server
@@ -371,19 +583,42 @@ fi
 # Done
 echo ""
 echo_info "=========================================="
-echo_info "설치 완료! (v2.3.3 MCP 버전)"
+echo_info "설치 완료! (v2.4.2 Multi-CLI 버전)"
 echo_info "=========================================="
 echo ""
-echo "다음 단계:"
-echo "  1. 셸 설정 적용: source $SHELL_RC"
-echo "  2. workspace로 이동: cd $WORKSPACE_ROOT"
-echo "  3. 프로젝트 신뢰 설정 (최초 1회):"
-echo "     codex 실행 후 프로젝트 신뢰 확인 프롬프트에서 'yes' 선택"
-echo "  4. codex 실행: codex \"안녕\""
+echo "설치된 CLI: $CLI_MODE"
 echo ""
-echo "MCP 도구 확인:"
-echo "  - TUI에서 /mcp 명령 실행"
-echo "  - local-search 도구가 등록되어 있어야 함"
+
+case "$CLI_MODE" in
+    codex)
+        echo "다음 단계 (Codex CLI):"
+        echo "  1. 셸 설정 적용: source $SHELL_RC"
+        echo "  2. workspace로 이동: cd $WORKSPACE_ROOT"
+        echo "  3. codex 실행: codex \"안녕\""
+        echo "  4. MCP 도구 확인: /mcp"
+        ;;
+    gemini)
+        echo "다음 단계 (Gemini CLI):"
+        echo "  1. workspace로 이동: cd $WORKSPACE_ROOT"
+        echo "  2. gemini 실행: gemini"
+        echo "  3. 컨텍스트 확인: /memory show"
+        echo "  4. MCP 도구 확인: /mcp"
+        ;;
+    all)
+        echo "다음 단계:"
+        echo ""
+        echo "  [Codex CLI]"
+        echo "    1. 셸 설정 적용: source $SHELL_RC"
+        echo "    2. codex 실행: codex \"안녕\""
+        echo "    3. MCP 도구 확인: /mcp"
+        echo ""
+        echo "  [Gemini CLI]"
+        echo "    1. gemini 실행: gemini"
+        echo "    2. 컨텍스트 확인: /memory show"
+        echo "    3. MCP 도구 확인: /mcp"
+        ;;
+esac
+
 echo ""
 echo "문제 해결:"
 echo "  - MCP 연결 실패 시 (HTTP 폴백): python3 .codex/tools/local-search/app/main.py &"

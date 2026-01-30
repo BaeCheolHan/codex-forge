@@ -2,6 +2,38 @@
 
 > 오프라인 코드 인덱싱 및 검색 도구
 
+## v2.4.0 변경사항 (Multi-CLI + 디버깅 개선)
+
+### 새 도구: `list_files`
+인덱싱된 파일 목록 조회 (디버깅용)
+
+```json
+// 전체 인덱스 조회
+{}
+
+// 특정 repo의 파일 목록
+{"repo": "my-service"}
+
+// Python 파일만
+{"file_types": ["py"]}
+
+// 숨김 디렉토리(.codex) 포함
+{"include_hidden": true}
+
+// 페이지네이션
+{"limit": 50, "offset": 100}
+```
+
+### `repo_candidates` 개선
+- 각 후보에 **선택 이유(reason)** 추가
+- `hint` 필드로 다음 액션 안내
+
+### `include_hidden` 옵션
+- `list_files`에서 숨김 디렉토리 포함 여부 명시
+- 기본값: `false` (`.codex` 등 제외)
+
+---
+
 ## v2.3.1 변경사항 (검색 기능 강화)
 
 ### 새 검색 옵션
@@ -81,7 +113,16 @@ curl http://127.0.0.1:47777/status
 |------|--------|------|
 | `LOCAL_SEARCH_INIT_TIMEOUT` | 5 | MCP 초기화 시 인덱싱 대기 시간 (초). 0=대기 안함 |
 | `LOCAL_SEARCH_WORKSPACE_ROOT` | - | 워크스페이스 루트 경로 |
-| `LOCAL_SEARCH_DB_PATH` | config.json | 인덱스 DB 경로 |
+| `LOCAL_SEARCH_DB_PATH` | - | **(v2.4.1 디버그 전용)** 명시적으로 설정 시 DB 경로 오버라이드. 비어있으면 워크스페이스 로컬 경로 사용 |
+
+### Multi-Workspace 지원 (v2.4.1)
+
+각 워크스페이스는 독립적인 DB를 사용합니다:
+```
+{workspace}/.codex/tools/local-search/data/index.db
+```
+
+여러 워크스페이스에서 동시에 CLI를 실행해도 DB 충돌이 발생하지 않습니다.
 
 ## 인덱싱 정책 (v2.3.3+)
 
@@ -147,7 +188,8 @@ curl http://127.0.0.1:47777/status
 |------|------|
 | search | 키워드/정규식으로 파일/코드 검색 (v2.3.1 확장) |
 | status | 인덱스 상태 확인 |
-| repo_candidates | 관련 repo 후보 찾기 |
+| repo_candidates | 관련 repo 후보 찾기 (v2.4.0: 선택 이유 추가) |
+| list_files | 인덱싱된 파일 목록 조회 (v2.4.0 신규) |
 
 ## 테스트
 

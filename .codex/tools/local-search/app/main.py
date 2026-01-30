@@ -81,9 +81,20 @@ def main() -> int:
             "Set LOCAL_SEARCH_ALLOW_NON_LOOPBACK=1 to override (NOT recommended)."
         )
 
-    # DB is a runtime cache. Default location is under ~/.cache so it is not accidentally
-    # committed/packaged with the rules.
-    db_path = os.path.expanduser(os.environ.get("LOCAL_SEARCH_DB_PATH") or cfg.db_path)
+    # v2.4.1: Workspace-local DB path enforcement (multi-workspace support)
+    # DB is ALWAYS stored within the workspace to prevent conflicts
+    workspace_db_path = Path(workspace_root) / ".codex" / "tools" / "local-search" / "data" / "index.db"
+    workspace_db_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Debug override (only if explicitly set and not empty)
+    debug_db_path = os.environ.get("LOCAL_SEARCH_DB_PATH", "").strip()
+    if debug_db_path:
+        print(f"[local-search] Using debug DB path override: {debug_db_path}")
+        db_path = os.path.expanduser(debug_db_path)
+    else:
+        db_path = str(workspace_db_path)
+    
+    print(f"[local-search] DB path: {db_path}")
 
     db = LocalSearchDB(db_path)
     indexer = Indexer(cfg, db)

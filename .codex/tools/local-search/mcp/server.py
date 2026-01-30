@@ -40,7 +40,7 @@ class LocalSearchMCPServer:
     
     PROTOCOL_VERSION = "2025-11-25"
     SERVER_NAME = "local-search"
-    SERVER_VERSION = "2.3.3"  # Updated for enhanced search
+    SERVER_VERSION = "2.4.2"  # Multi-workspace support + Search UX enhancements
     
     def __init__(self, workspace_root: str):
         self.workspace_root = workspace_root
@@ -78,13 +78,22 @@ class LocalSearchMCPServer:
                     commit_batch_size=500,
                 )
             
-            # v2.3.2: Use config db_path for consistency with HTTP mode
-            db_path_str = os.path.expanduser(
-                os.environ.get("LOCAL_SEARCH_DB_PATH") or self.cfg.db_path
-            )
-            db_path = Path(db_path_str)
+            # v2.4.1: Workspace-local DB path enforcement (multi-workspace support)
+            # DB is ALWAYS stored within the workspace to prevent conflicts
+            # Environment variable LOCAL_SEARCH_DB_PATH is only for debugging
+            workspace_db_path = Path(self.workspace_root) / ".codex" / "tools" / "local-search" / "data" / "index.db"
+            
+            # Debug override (only if explicitly set and not empty)
+            debug_db_path = os.environ.get("LOCAL_SEARCH_DB_PATH", "").strip()
+            if debug_db_path:
+                self._log_info(f"Using debug DB path override: {debug_db_path}")
+                db_path = Path(os.path.expanduser(debug_db_path))
+            else:
+                db_path = workspace_db_path
+            
             db_path.parent.mkdir(parents=True, exist_ok=True)
             self.db = LocalSearchDB(str(db_path))
+            self._log_info(f"DB path: {db_path}")
             
             self.indexer = Indexer(self.cfg, self.db)
             
@@ -197,7 +206,7 @@ class LocalSearchMCPServer:
                 },
                 {
                     "name": "repo_candidates",
-                    "description": "Find candidate repositories for a query. Use when user doesn't specify which repo to work on.",
+                    "description": "Find candidate repositories for a query. Use when user doesn't specify which repo to work on. Returns candidates with selection reasons.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -212,6 +221,43 @@ class LocalSearchMCPServer:
                             },
                         },
                         "required": ["query"],
+                    },
+                },
+                {
+                    "name": "list_files",
+                    "description": "List indexed files for debugging. Shows which files are in the index. Use to verify indexing status.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "repo": {
+                                "type": "string",
+                                "description": "Filter by repository name",
+                            },
+                            "path_pattern": {
+                                "type": "string",
+                                "description": "Glob pattern for path matching, e.g., 'src/**/*.ts'",
+                            },
+                            "file_types": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Filter by file extensions, e.g., ['py', 'ts']",
+                            },
+                            "include_hidden": {
+                                "type": "boolean",
+                                "description": "Include hidden directories like .codex (default: false)",
+                                "default": False,
+                            },
+                            "limit": {
+                                "type": "integer",
+                                "description": "Maximum results (default: 100, max: 500)",
+                                "default": 100,
+                            },
+                            "offset": {
+                                "type": "integer",
+                                "description": "Pagination offset (default: 0)",
+                                "default": 0,
+                            },
+                        },
                     },
                 },
             ],
@@ -229,6 +275,8 @@ class LocalSearchMCPServer:
             return self._tool_status(args)
         elif tool_name == "repo_candidates":
             return self._tool_repo_candidates(args)
+        elif tool_name == "list_files":
+            return self._tool_list_files(args)
         else:
             raise ValueError(f"Unknown tool: {tool_name}")
     
@@ -256,7 +304,7 @@ class LocalSearchMCPServer:
             case_sensitive=bool(args.get("case_sensitive", False)),
         )
         
-        hits, meta = self.db.search_v2(opts)
+        hits, db_meta = self.db.search_v2(opts)
         
         results: List[Dict[str, Any]] = []
         for hit in hits:
@@ -277,18 +325,45 @@ class LocalSearchMCPServer:
                 result["file_type"] = hit.file_type
             results.append(result)
         
+        # v2.4.2 Enhanced Metadata & UX
+        index_status = self.db.get_index_status()
+        scope = f"repo:{opts.repo}" if opts.repo else "workspace"
+        
         output = {
             "query": query,
-            "total": len(results),
+            "scope": scope,
+            "total_results": len(results),
             "results": results,
             "meta": {
-                "fallback_used": meta.get("fallback_used", False),
-                "total_scanned": meta.get("total_scanned", 0),
-                "regex_mode": meta.get("regex_mode", False),
+                "fallback_used": db_meta.get("fallback_used", False),
+                "total_scanned_in_db": db_meta.get("total_scanned", 0),
+                "regex_mode": db_meta.get("regex_mode", False),
+                "index_status": {
+                    "total_indexed_files": index_status["total_files"],
+                    "last_scan_time": index_status["last_scan_time"],
+                }
             },
         }
         
-        # Add filter info if used
+        # Zero results handling & Hints
+        if not results:
+            reason = "No matches found."
+            if opts.path_pattern or opts.file_types:
+                reason = "No matches found with current filters (path_pattern or file_types might be too restrictive)."
+            
+            output["meta"]["fallback_reason"] = reason
+            output["hints"] = [
+                "Try a broader query or remove filters (path_pattern, file_types).",
+                "Check if the file is indexed using 'list_files' tool.",
+                "If searching for a specific pattern, try 'use_regex=true'."
+            ]
+        elif len(results) >= opts.limit:
+            output["hints"] = [
+                f"Showing only top {opts.limit} results. Use 'limit' parameter to see more.",
+                "Try narrowing down using 'file_types' or 'path_pattern' to find exact files."
+            ]
+        
+        # Add filter info summary
         filters_used = []
         if opts.file_types:
             filters_used.append(f"file_types={opts.file_types}")
@@ -296,12 +371,10 @@ class LocalSearchMCPServer:
             filters_used.append(f"path_pattern={opts.path_pattern}")
         if opts.exclude_patterns:
             filters_used.append(f"exclude={opts.exclude_patterns}")
-        if opts.recency_boost:
-            filters_used.append("recency_boost=true")
         if opts.use_regex:
             filters_used.append("regex=true")
         if filters_used:
-            output["filters"] = filters_used
+            output["active_filters"] = filters_used
         
         return {
             "content": [{"type": "text", "text": json.dumps(output, indent=2, ensure_ascii=False)}],
@@ -335,9 +408,42 @@ class LocalSearchMCPServer:
         
         candidates = self.db.repo_candidates(q=query, limit=limit)
         
+        # v2.4.0: Add selection reason for each candidate
+        for candidate in candidates:
+            score = candidate.get("score", 0)
+            evidence = candidate.get("evidence", "")
+            if score >= 10:
+                reason = f"High match ({score} files contain '{query}')"
+            elif score >= 5:
+                reason = f"Moderate match ({score} files)"
+            else:
+                reason = f"Low match ({score} files)"
+            candidate["reason"] = reason
+        
         output = {
             "query": query,
             "candidates": candidates,
+            "hint": "Use 'repo' parameter in search to narrow down scope after selection",
+        }
+        
+        return {
+            "content": [{"type": "text", "text": json.dumps(output, indent=2, ensure_ascii=False)}],
+        }
+    
+    def _tool_list_files(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """List indexed files for debugging (v2.4.0)."""
+        files, meta = self.db.list_files(
+            repo=args.get("repo"),
+            path_pattern=args.get("path_pattern"),
+            file_types=args.get("file_types"),
+            include_hidden=bool(args.get("include_hidden", False)),
+            limit=int(args.get("limit", 100)),
+            offset=int(args.get("offset", 0)),
+        )
+        
+        output = {
+            "files": files,
+            "meta": meta,
         }
         
         return {

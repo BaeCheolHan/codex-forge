@@ -1,5 +1,56 @@
 # Changelog
 
+## v2.4.2 (2026-01-30)
+
+### ✨ Local Search UX & 안정성 개선
+- **Multi-Workspace 지원**: DB 경로를 워크스페이스 로컬(`/data/index.db`)로 강제하여 여러 워크스페이스 동시 실행 시 충돌 방지
+- **검색 결과 메타데이터 강화**:
+  - `scope`: 검색 범위(workspace 또는 특정 repo) 명시
+  - `index_status`: 인덱싱된 총 파일 수 및 마지막 스캔 시간 포함
+- **Zero Result UX 개선**: 결과가 없을 때 상세 이유(`fallback_reason`) 및 검색 팁(`hints`) 자동 제안
+- **AGENTS.md 구조 개선**: Workspace root에 포인터 파일을 생성하여 Codex CLI 진입점 최적화
+
+### v2.4.0 (2026-01-30) (보관용)
+... (기존 내용) ...
+
+
+### 🎯 Major Changes (Multi-CLI 지원)
+- **Gemini CLI 지원**: Codex CLI와 Gemini CLI 모두 지원
+  - `GEMINI.md`: Gemini CLI 진입점 (workspace root)
+  - `.gemini/settings.json`: Gemini CLI MCP 설정
+  - `@./path.md` import 문법으로 기존 rules 재사용
+
+- **설치 옵션 추가**: CLI 선택 가능
+  - `--codex`: Codex CLI만 설치
+  - `--gemini`: Gemini CLI만 설치
+  - `--all`: 모두 설치 (기본값)
+  - 대화형 프롬프트 지원
+
+### ✨ Local Search 개선
+- **`list_files` 도구**: 인덱싱된 파일 목록 조회 (디버깅용)
+- **검색 메타데이터 강화**: repo 선택 이유 표시
+- **`include_hidden` 옵션**: 숨김 디렉토리(.codex) 포함 여부 명시
+
+### 📁 새 디렉토리 구조
+```
+workspace/
+├── .codex/              # 공유 (rules, tools, scenarios)
+│   ├── AGENTS.md        # Codex CLI 진입점
+│   └── config.toml      # Codex CLI MCP 설정
+├── .gemini/             # Gemini CLI 전용
+│   └── settings.json    # Gemini CLI MCP 설정
+├── GEMINI.md            # Gemini CLI 진입점
+└── ...
+```
+
+### 📦 변경된 파일
+- `install.sh`: CLI 선택 로직 추가
+- `README.md`: Multi-CLI 안내
+- `.codex/AGENTS.md`: Gemini CLI 참조 추가
+- `.codex/tools/local-search/mcp/server.py`: 신규 도구 추가
+
+---
+
 ## v2.3.3 (2026-01-30)
 
 ### 🧹 Docs & Meta

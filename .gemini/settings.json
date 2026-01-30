@@ -1,0 +1,17 @@
+{
+  "context": {
+    "fileName": [
+      "GEMINI.md"
+    ]
+  },
+  "mcpServers": {
+    "local-search": {
+      "command": "python3",
+      "args": [
+        ".codex/tools/local-search/mcp/server.py"
+      ],
+      "timeout": 30000,
+      "trust": false
+    }
+  }
+}

@@ -187,9 +187,123 @@ class LocalSearchDB:
             return None
         return int(row["mtime"]), int(row["size"])
 
+    def get_index_status(self) -> dict[str, Any]:
+        """Get index metadata for debugging/UI (v2.4.2)."""
+        row = self._read.execute("SELECT COUNT(1) AS c, MAX(mtime) AS last_mtime FROM files").fetchone()
+        count = int(row["c"]) if row and row["c"] else 0
+        last_mtime = int(row["last_mtime"]) if row and row["last_mtime"] else 0
+        
+        return {
+            "total_files": count,
+            "last_scan_time": last_mtime,
+            "db_size_bytes": Path(self.db_path).stat().st_size if Path(self.db_path).exists() else 0
+        }
+
     def count_files(self) -> int:
         row = self._read.execute("SELECT COUNT(1) AS c FROM files").fetchone()
         return int(row["c"]) if row else 0
+
+    def list_files(
+        self, 
+        repo: Optional[str] = None,
+        path_pattern: Optional[str] = None,
+        file_types: Optional[list[str]] = None,
+        include_hidden: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """List indexed files for debugging (v2.4.0).
+        
+        Args:
+            repo: Filter by repository
+            path_pattern: Glob pattern for path matching
+            file_types: Filter by file extensions
+            include_hidden: Include hidden directories like .codex
+            limit: Maximum results (max 500)
+            offset: Pagination offset
+            
+        Returns:
+            tuple of (files, metadata)
+        """
+        limit = min(int(limit), 500)
+        offset = max(int(offset), 0)
+        
+        where_clauses = []
+        params: list[Any] = []
+        
+        if repo:
+            where_clauses.append("f.repo = ?")
+            params.append(repo)
+        
+        if not include_hidden:
+            # Exclude hidden directories by default
+            where_clauses.append("f.path NOT LIKE '%/.%'")
+            where_clauses.append("f.path NOT LIKE '.%'")
+        
+        where = " AND ".join(where_clauses) if where_clauses else "1=1"
+        
+        sql = f"""
+            SELECT f.repo AS repo,
+                   f.path AS path,
+                   f.mtime AS mtime,
+                   f.size AS size
+            FROM files f
+            WHERE {where}
+            ORDER BY f.repo, f.path
+            LIMIT ? OFFSET ?;
+        """
+        params.extend([limit, offset])
+        
+        rows = self._read.execute(sql, params).fetchall()
+        
+        # Apply in-memory filters that SQL can't handle well
+        files: list[dict[str, Any]] = []
+        for r in rows:
+            path = r["path"]
+            
+            # File type filter
+            if file_types:
+                if not self._matches_file_types(path, file_types):
+                    continue
+            
+            # Path pattern filter
+            if path_pattern:
+                if not self._matches_path_pattern(path, path_pattern):
+                    continue
+            
+            files.append({
+                "repo": r["repo"],
+                "path": path,
+                "mtime": int(r["mtime"]),
+                "size": int(r["size"]),
+                "file_type": self._get_file_extension(path),
+            })
+        
+        # Get total count for pagination info
+        count_sql = f"SELECT COUNT(1) AS c FROM files f WHERE {where}"
+        count_params = params[:-2]  # Remove limit/offset
+        total = self._read.execute(count_sql, count_params).fetchone()["c"]
+        
+        # Get repo breakdown
+        repo_sql = """
+            SELECT repo, COUNT(1) AS file_count
+            FROM files
+            GROUP BY repo
+            ORDER BY file_count DESC;
+        """
+        repo_rows = self._read.execute(repo_sql).fetchall()
+        repos = [{"repo": r["repo"], "file_count": r["file_count"]} for r in repo_rows]
+        
+        meta = {
+            "total": total,
+            "returned": len(files),
+            "offset": offset,
+            "limit": limit,
+            "repos": repos,
+            "include_hidden": include_hidden,
+        }
+        
+        return files, meta
 
     # ========== Helper Methods ==========
     
