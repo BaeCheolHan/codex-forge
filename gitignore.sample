@@ -1,0 +1,20 @@
+# Local Search runtime files
+.codex/tools/local-search/data/
+*.pyc
+__pycache__/
+
+# State files (non-commit)
+docs/_shared/state/current-state.md
+docs/_shared/state/current-state.d/*.md
+docs/_shared/state/debt.md
+docs/_shared/state/state-log.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
