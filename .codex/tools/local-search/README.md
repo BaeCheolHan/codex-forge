@@ -2,7 +2,16 @@
 
 > 오프라인 코드 인덱싱 및 검색 도구
 
-## v2.4.0 변경사항 (Multi-CLI + 디버깅 개선)
+## v2.5.0 변경사항 (DB 격리 + Pagination)
+
+### DB 격리 (Critical)
+- **전역 DB 사용 중단**: `~/.cache/local-search/` 대신 각 워크스페이스 내부 `.codex/tools/local-search/data/index.db` 사용.
+- 워크스페이스 간 데이터 오염 및 충돌 원천 차단.
+
+### `search` 도구 개선 (Pagination)
+- `offset`: 검색 결과 페이지네이션 지원.
+- `has_more`: 추가 결과 존재 여부 표시.
+- `repo_summary`: 리포지토리별 매칭 통계 제공.
 
 ### 새 도구: `list_files`
 인덱싱된 파일 목록 조회 (디버깅용)
@@ -113,9 +122,9 @@ curl http://127.0.0.1:47777/status
 |------|--------|------|
 | `LOCAL_SEARCH_INIT_TIMEOUT` | 5 | MCP 초기화 시 인덱싱 대기 시간 (초). 0=대기 안함 |
 | `LOCAL_SEARCH_WORKSPACE_ROOT` | - | 워크스페이스 루트 경로 |
-| `LOCAL_SEARCH_DB_PATH` | - | **(v2.4.1 디버그 전용)** 명시적으로 설정 시 DB 경로 오버라이드. 비어있으면 워크스페이스 로컬 경로 사용 |
+| `LOCAL_SEARCH_DB_PATH` | - | **(v2.5.0 디버그 전용)** 명시적으로 설정 시 DB 경로 오버라이드. 비어있으면 워크스페이스 로컬 경로 사용 |
 
-### Multi-Workspace 지원 (v2.4.1)
+### Multi-Workspace 지원 (v2.5.0)
 
 각 워크스페이스는 독립적인 DB를 사용합니다:
 ```
@@ -188,8 +197,8 @@ curl http://127.0.0.1:47777/status
 |------|------|
 | search | 키워드/정규식으로 파일/코드 검색 (v2.3.1 확장) |
 | status | 인덱스 상태 확인 |
-| repo_candidates | 관련 repo 후보 찾기 (v2.4.0: 선택 이유 추가) |
-| list_files | 인덱싱된 파일 목록 조회 (v2.4.0 신규) |
+| repo_candidates | 관련 repo 후보 찾기 (v2.5.0: 선택 이유 추가) |
+| list_files | 인덱싱된 파일 목록 조회 (v2.5.0 신규) |
 
 ## 테스트
 

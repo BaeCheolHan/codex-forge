@@ -1,5 +1,5 @@
 #!/bin/bash
-# Codex Rules v2.4.3 - 언인스톨 스크립트
+# Codex Rules v2.5.0 - 언인스톨 스크립트
 # 사용법: ./uninstall.sh [workspace_root] [--force]
 
 set -euo pipefail
@@ -81,6 +81,16 @@ if [[ -d "$WORKSPACE_ROOT/.codex" ]]; then
     ITEMS_DESC+=("  - .codex/ (룰셋, 도구, 설정)")
 fi
 
+# Root level documentation files
+if [[ -f "$WORKSPACE_ROOT/AGENTS.md" ]]; then
+    ITEMS_TO_REMOVE+=("$WORKSPACE_ROOT/AGENTS.md")
+    ITEMS_DESC+=("  - AGENTS.md (진입점)")
+fi
+if [[ -f "$WORKSPACE_ROOT/GEMINI.md" ]]; then
+    ITEMS_TO_REMOVE+=("$WORKSPACE_ROOT/GEMINI.md")
+    ITEMS_DESC+=("  - GEMINI.md (진입점)")
+fi
+
 if [[ -d "$WORKSPACE_ROOT/docs" && -d "$WORKSPACE_ROOT/docs/_meta" ]]; then
     if [[ "$FORCE" != true ]]; then
         read -rp "문서(docs/) 폴더도 삭제하시겠습니까? (yes/no) [no]: " remove_docs
@@ -138,6 +148,10 @@ fi
 # Remove items
 echo ""
 echo_info "삭제 중..."
+
+# Clean up any lingering python cache files in the workspace
+find "$WORKSPACE_ROOT" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+find "$WORKSPACE_ROOT" -name "*.pyc" -delete 2>/dev/null || true
 
 for item in "${ITEMS_TO_REMOVE[@]}"; do
     if [[ -e "$item" ]]; then

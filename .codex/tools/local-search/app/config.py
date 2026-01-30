@@ -77,4 +77,4 @@ def resolve_config_path(repo_root: str) -> str:
     override = os.environ.get("LOCAL_SEARCH_CONFIG")
     if override:
         return override
-    return str(Path(repo_root) / "tools" / "local-search" / "config" / "config.json")
+    return str(Path(repo_root) / ".codex" / "tools" / "local-search" / "config" / "config.json")

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Codex Rules v2.4.3 - 원커맨드 설치 스크립트 (Multi-CLI 버전)
+# Codex Rules v2.5.0 - 원커맨드 설치 스크립트 (Multi-CLI 버전)
 # 사용법: ./install.sh [workspace_root] [--codex|--gemini|--all] [--backup|--skip|--quit]
 # - workspace_root 미지정 시: 현재 디렉토리를 workspace로 사용하고 git에서 소스를 내려받음
 # - git 소스: CODEX_RULES_REPO_URL/CODEX_RULES_REF 환경변수로 오버라이드 가능
@@ -8,8 +8,9 @@
 #   --codex   Codex CLI만 설치
 #   --gemini  Gemini CLI만 설치
 #   --all     모두 설치 (기본값)
+#   --update  MCP 도구와 룰만 업데이트 (docs 및 설정 유지)
 #
-# 주요 변경 (v2.4.3):
+# 주요 변경 (v2.5.0):
 #   - Multi-CLI 지원: Codex CLI + Gemini CLI
 #   - CLI 선택 옵션 추가: --codex, --gemini, --all
 #   - GEMINI.md, .gemini/settings.json 생성 지원
@@ -66,6 +67,7 @@ WORKSPACE_ROOT=""
 for arg in "$@"; do
     case "$arg" in
         --backup) MODE="backup" ;;
+        --update) MODE="update" ;;
         --skip) MODE="skip" ;;
         --quit) MODE="quit" ;;
         --codex) CLI_MODE="codex" ;;
@@ -92,7 +94,7 @@ fi
 # Resolve to absolute path
 WORKSPACE_ROOT="$(cd "$WORKSPACE_ROOT" 2>/dev/null && pwd || echo "$WORKSPACE_ROOT")"
 
-echo_info "Codex Rules v2.4.3 설치 시작 (Multi-CLI 버전)"
+echo_info "Codex Rules v2.5.0 설치 시작 (Multi-CLI 버전)"
 echo_info "Workspace: $WORKSPACE_ROOT"
 if [[ "$SOURCE_MODE" == "git" ]]; then
     echo_info "Source: git (${REPO_URL}${REPO_REF:+@$REPO_REF})"
@@ -182,19 +184,27 @@ for file in "GEMINI.md" "AGENTS.md"; do
 done
 
 if [[ ${#EXISTING_DIRS[@]} -gt 0 ]]; then
-    echo_warn "기존 설치 발견: ${EXISTING_DIRS[*]}"
+    if [[ "$MODE" == "update" ]]; then
+        echo_info "기존 설치 발견 (업데이트 모드 진행)"
+        echo_info "  - docs/ 및 사용자 설정은 보존됩니다."
+        echo_info "  - .codex/rules, .codex/tools는 최신 버전으로 교체됩니다."
+    else
+        echo_warn "기존 설치 발견: ${EXISTING_DIRS[*]}"
+    fi
     
     if [[ -z "$MODE" ]]; then
         echo ""
         echo "선택하세요:"
         echo "  1) backup - 기존 파일 백업 후 덮어쓰기"
-        echo "  2) skip   - 기존 디렉토리 유지"
-        echo "  3) quit   - 설치 중단"
+        echo "  2) update - MCP 도구와 룰만 업데이트 (docs 보존)"
+        echo "  3) skip   - 기존 디렉토리 유지"
+        echo "  4) quit   - 설치 중단"
         echo ""
-        read -rp "선택 (1/2/3): " choice
+        read -rp "선택 (1/2/3/4): " choice
         case "$choice" in
             1|backup) MODE="backup" ;;
-            2|skip) MODE="skip" ;;
+            2|update) MODE="update" ;;
+            3|skip) MODE="skip" ;;
             *) MODE="quit" ;;
         esac
     fi
@@ -219,8 +229,8 @@ if [[ ${#EXISTING_DIRS[@]} -gt 0 ]]; then
             echo ""
             echo "수동 설치 방법:"
             echo "  1. 기존 디렉토리 백업 또는 삭제"
-            echo "  2. 새 버전 압축 해제: unzip codex-rules-v2.4.3.zip -d /tmp"
-            echo "  3. 파일 복사: cp -r /tmp/codex-rules-v2.4.3/* $WORKSPACE_ROOT/"
+            echo "  2. 새 버전 압축 해제: unzip codex-rules-v2.5.0.zip -d /tmp"
+            echo "  3. 파일 복사: cp -r /tmp/codex-rules-v2.5.0/* $WORKSPACE_ROOT/"
             exit 0
             ;;
     esac
@@ -234,7 +244,9 @@ install_shared() {
     
     # Decide whether to overwrite rules
     RULES_OVERWRITE="yes"
-    if [[ "$HAD_RULES" == "yes" ]]; then
+    if [[ "$MODE" == "update" ]]; then
+        RULES_OVERWRITE="yes"
+    elif [[ "$HAD_RULES" == "yes" ]]; then
         echo ""
         read -rp "기존 rules를 덮어쓸까요? (yes/no): " rules_choice
         case "$rules_choice" in
@@ -245,7 +257,9 @@ install_shared() {
 
     # Copy docs
     if [[ -d "$SOURCE_DIR/docs" ]]; then
-        if [[ "$MODE" == "skip" && -d "docs" ]]; then
+        if [[ "$MODE" == "update" ]]; then
+            echo_info "  docs/ 건너뜀 (업데이트 모드)"
+        elif [[ "$MODE" == "skip" && -d "docs" ]]; then
             echo_info "  docs/ 건너뜀 (이미 존재)"
         else
             cp -r "$SOURCE_DIR/docs" .
@@ -267,6 +281,9 @@ install_shared() {
             done
             for dir in tools scenarios skills; do
                 if [[ -d "$SOURCE_DIR/.codex/$dir" ]]; then
+                    if [[ "$MODE" == "update" && -d ".codex/$dir" ]]; then
+                        rm -rf ".codex/$dir"
+                    fi
                     cp -r "$SOURCE_DIR/.codex/$dir" ".codex/"
                 fi
             done
@@ -314,7 +331,7 @@ install_codex_cli() {
     
     # Root AGENTS.md는 .codex/AGENTS.md를 가리키는 포인터 파일로 생성
     # (Codex CLI는 root에서 AGENTS.md를 읽으므로)
-    if [[ "$MODE" == "skip" && -f "AGENTS.md" ]]; then
+    if [[ ("$MODE" == "skip" || "$MODE" == "update") && -f "AGENTS.md" ]]; then
         echo_info "  AGENTS.md 건너뜀 (이미 존재)"
     else
         cat > "AGENTS.md" << 'AGENTS_EOF'
@@ -344,7 +361,7 @@ startup_timeout_sec = 15
 tool_timeout_sec = 30
 
 [mcp_servers.local-search.env]
-# Workspace root auto-detection (v2.4.3):
+# Workspace root auto-detection (v2.5.0):
 # 1. CODEX_WORKSPACE_ROOT env var (if set)
 # 2. Search for .codex-root from cwd upward
 # 3. Fallback to cwd
@@ -353,7 +370,7 @@ MCP_EOF
 
     if [[ ! -f ".codex/config.toml" ]]; then
         cat > ".codex/config.toml" << 'CFG_EOF'
-# Workspace-scoped Codex configuration (v2.4.3)
+# Workspace-scoped Codex configuration (v2.5.0)
 CFG_EOF
         echo "$MCP_BLOCK" >> ".codex/config.toml"
         echo_info "  config.toml 생성 + MCP 설정 추가"
@@ -376,7 +393,7 @@ install_gemini_cli() {
     echo_step "Gemini CLI 파일 설치 중..."
     
     # Root GEMINI.md 생성
-    if [[ "$MODE" == "skip" && -f "GEMINI.md" ]]; then
+    if [[ ("$MODE" == "skip" || "$MODE" == "update") && -f "GEMINI.md" ]]; then
         echo_info "  GEMINI.md 건너뜀 (이미 존재)"
     else
         cat > "GEMINI.md" << 'GEMINI_EOF'
@@ -443,7 +460,7 @@ GEMINI_EOF
     # .gemini/settings.json
     mkdir -p ".gemini"
     if [[ -f "$SOURCE_DIR/.gemini/settings.json" ]]; then
-        if [[ "$MODE" == "skip" && -f ".gemini/settings.json" ]]; then
+        if [[ ("$MODE" == "skip" || "$MODE" == "update") && -f ".gemini/settings.json" ]]; then
             echo_info "  .gemini/settings.json 건너뜀 (이미 존재)"
         else
             cp "$SOURCE_DIR/.gemini/settings.json" ".gemini/"
@@ -542,7 +559,7 @@ if [[ "$CLI_MODE" == "codex" || "$CLI_MODE" == "all" ]]; then
         fi
     else
         echo "" >> "$SHELL_RC"
-        echo "# Codex Rules v2.4.3 - 자동 생성됨" >> "$SHELL_RC"
+        echo "# Codex Rules v2.5.0 - 자동 생성됨" >> "$SHELL_RC"
         echo "export CODEX_HOME=\"$WORKSPACE_ROOT/.codex\"" >> "$SHELL_RC"
         echo_info "  CODEX_HOME 환경변수 추가"
     fi
@@ -564,7 +581,7 @@ fi
 # Done
 echo ""
 echo_info "=========================================="
-echo_info "설치 완료! (v2.4.3 Multi-CLI 버전)"
+echo_info "설치 완료! (v2.5.0 Multi-CLI 버전)"
 echo_info "=========================================="
 echo ""
 echo "설치된 CLI: $CLI_MODE"

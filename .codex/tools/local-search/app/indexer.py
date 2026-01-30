@@ -233,6 +233,13 @@ class Indexer:
             dirnames[:] = [d for d in dirnames if d not in exclude_dirs]
 
             for fn in filenames:
+                # v2.5.0: Explicitly exclude root-level CLI entry points from index
+                # to prevent __root__ from appearing as a repo candidate.
+                if fn in ("AGENTS.md", "GEMINI.md", "README.md", "install.sh", "uninstall.sh"):
+                    # Only skip if we are strictly at the root
+                    if os.path.samefile(dirpath, root):
+                         continue
+
                 # Fast path filename-only excludes
                 if exclude_globs and any(fnmatch.fnmatch(fn, g) for g in exclude_globs):
                     continue

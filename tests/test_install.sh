@@ -23,8 +23,8 @@ TEST_BASE="/tmp/codex-forge-tests"
 PASS_COUNT=0
 FAIL_COUNT=0
 
-echo_pass() { echo -e "${GREEN}[PASS]${NC} $1"; ((PASS_COUNT++)); }
-echo_fail() { echo -e "${RED}[FAIL]${NC} $1"; ((FAIL_COUNT++)); }
+echo_pass() { echo -e "${GREEN}[PASS]${NC} $1"; ((++PASS_COUNT)); }
+echo_fail() { echo -e "${RED}[FAIL]${NC} $1"; ((++FAIL_COUNT)); }
 echo_info() { echo -e "${YELLOW}[INFO]${NC} $1"; }
 
 cleanup() {
@@ -208,6 +208,44 @@ test_relative_paths_in_pointer() {
     fi
 }
 
+test_update_mode_install() {
+    setup_test "update_mode_install"
+
+    # 1. Initial Install
+    run_install --all > /dev/null
+
+    # 2. Modify files (simulate user changes)
+    echo "# User Modified Doc" > "$TEST_DIR/docs/user_doc.md"
+    echo "# User Modified GEMINI" > "$TEST_DIR/GEMINI.md"
+    # Modify a rule (to see if it gets reverted)
+    echo "# Modified Rule" > "$TEST_DIR/.codex/rules/00-core.md"
+
+    # 3. Run Update
+    run_install --update > /dev/null
+
+    # 4. Verify Preservation
+    if [[ -f "$TEST_DIR/docs/user_doc.md" ]]; then
+        echo_pass "Update 모드에서 docs/ 유지됨"
+    else
+        echo_fail "Update 모드에서 docs/ 삭제됨"
+    fi
+
+    if grep -q "User Modified GEMINI" "$TEST_DIR/GEMINI.md"; then
+        echo_pass "Update 모드에서 GEMINI.md 유지됨"
+    else
+        echo_fail "Update 모드에서 GEMINI.md 덮어씌워짐"
+    fi
+
+    # 5. Verify Update (Rules should be reset)
+    # Note: install.sh copies from source. If source is local script dir, it has original 00-core.md.
+    # The modified rule in target should be overwritten by source.
+    if ! grep -q "Modified Rule" "$TEST_DIR/.codex/rules/00-core.md"; then
+        echo_pass "Update 모드에서 Rules 업데이트됨 (덮어쓰기 성공)"
+    else
+        echo_fail "Update 모드에서 Rules 업데이트 안됨 (덮어쓰기 실패)"
+    fi
+}
+
 # =============================================================================
 # 메인 실행
 # =============================================================================
@@ -249,6 +287,9 @@ main() {
     echo ""
     
     test_relative_paths_in_pointer
+    echo ""
+
+    test_update_mode_install
     echo ""
     
     echo "=============================================="

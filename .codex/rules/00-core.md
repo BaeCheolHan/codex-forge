@@ -155,9 +155,9 @@ AI: [1단계 통과] 변경 가능 모드 진입. 타겟 repo를 지정해주세
 
 User: "auth-service"
 AI: [2단계 통과] 타겟: auth-service. 예상 S1 규모(4 files, ~200 LOC).
-    진행할까요? (yes/no)
+    진행할까요? ("approve execute" 또는 "run confirmed"로 승인해주세요)
 
-User: "yes"
+User: "approve execute"
 AI: [3단계 통과 - 최종 승인] 변경을 시작합니다.
 ```
 

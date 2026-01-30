@@ -37,7 +37,7 @@ class LocalSearchMCPServer:
     
     PROTOCOL_VERSION = "2025-11-25"
     SERVER_NAME = "local-search"
-    SERVER_VERSION = "2.5.0"  # Pagination & Status Details
+    SERVER_VERSION = "2.5.0"  # DB Isolation & Pagination
     
     def __init__(self, workspace_root: str):
         self.workspace_root = workspace_root
