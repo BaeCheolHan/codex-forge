@@ -25,19 +25,21 @@ class SearchHit:
 
 @dataclass
 class SearchOptions:
-    """Search configuration options (v2.3.1)."""
+    """Search configuration options (v2.5.1)."""
     query: str = ""
     repo: Optional[str] = None
     limit: int = 20
-    offset: int = 0  # v2.5.0: Added offset
+    offset: int = 0
     snippet_lines: int = 5
-    # New in v2.3.1
+    # Filtering
     file_types: list[str] = field(default_factory=list)  # e.g., ["py", "ts"]
     path_pattern: Optional[str] = None  # e.g., "src/**/*.ts"
     exclude_patterns: list[str] = field(default_factory=list)  # e.g., ["node_modules", "build"]
-    recency_boost: bool = False  # Boost recently modified files
-    use_regex: bool = False  # Use regex instead of FTS
-    case_sensitive: bool = False  # Case-sensitive regex
+    recency_boost: bool = False
+    use_regex: bool = False
+    case_sensitive: bool = False
+    # Pagination & Performance (v2.5.1)
+    total_mode: str = "exact"  # "exact" | "approx"
 
 
 class LocalSearchDB:
@@ -73,6 +75,11 @@ class LocalSearchDB:
 
         self._fts_enabled = self._try_enable_fts(self._write)
         self._init_schema()
+        
+        # TTL Cache for stats (v2.5.1)
+        self._stats_cache: dict[str, Any] = {}
+        self._stats_cache_ts = 0.0
+        self._stats_cache_ttl = 60.0 # 60 seconds
 
     @staticmethod
     def _apply_pragmas(conn: sqlite3.Connection) -> None:
@@ -218,11 +225,25 @@ class LocalSearchDB:
         row = self._read.execute("SELECT COUNT(1) AS c FROM files").fetchone()
         return int(row["c"]) if row else 0
 
-    def get_repo_stats(self) -> dict[str, int]:
-        """Get file counts per repo (v2.5.0)."""
+    def clear_stats_cache(self) -> None:
+        """Invalidate stats cache."""
+        self._stats_cache.clear()
+        self._stats_cache_ts = 0.0
+
+    def get_repo_stats(self, force_refresh: bool = False) -> dict[str, int]:
+        """Get file counts per repo with TTL cache (v2.5.1)."""
+        now = time.time()
+        if not force_refresh and (now - self._stats_cache_ts < self._stats_cache_ttl):
+            cached = self._stats_cache.get("repo_stats")
+            if cached is not None:
+                return cached
+
         try:
             rows = self._read.execute("SELECT repo, COUNT(1) as c FROM files GROUP BY repo").fetchall()
-            return {r["repo"]: r["c"] for r in rows}
+            stats = {r["repo"]: r["c"] for r in rows}
+            self._stats_cache["repo_stats"] = stats
+            self._stats_cache_ts = now
+            return stats
         except Exception:
             return {}
 
@@ -329,7 +350,42 @@ class LocalSearchDB:
         return files, meta
 
     # ========== Helper Methods ========== 
-    
+
+    def _glob_to_like(self, pattern: str) -> str:
+        """Convert glob-style pattern to SQL LIKE pattern for 1st-pass filtering."""
+        if not pattern:
+            return "%"
+        res = pattern.replace("**", "%").replace("*", "%").replace("?", "_")
+        # Ensure it matches anywhere if not anchored
+        if not (res.startswith("/") or res.startswith("%")):
+            res = "%" + res
+        while "%%" in res:
+            res = res.replace("%%", "%")
+        return res
+
+    def _build_filter_clauses(self, opts: SearchOptions) -> tuple[list[str], list[Any]]:
+        """Build SQL WHERE clauses for filtering."""
+        clauses = []
+        params = []
+        if opts.repo:
+            clauses.append("f.repo = ?")
+            params.append(opts.repo)
+        
+        if opts.file_types:
+            type_clauses = []
+            for ft in opts.file_types:
+                ext = ft.lower().lstrip(".")
+                type_clauses.append("f.path LIKE ?")
+                params.append(f"%.{ext}")
+            if type_clauses:
+                clauses.append("(" + " OR ".join(type_clauses) + ")")
+        
+        if opts.path_pattern:
+            clauses.append("f.path LIKE ?")
+            params.append(self._glob_to_like(opts.path_pattern))
+            
+        return clauses, params
+
     def _get_file_extension(self, path: str) -> str:
         ext = Path(path).suffix
         return ext[1:].lower() if ext else ""
@@ -455,14 +511,16 @@ class LocalSearchDB:
 
     def _search_fts(self, opts: SearchOptions, terms: list[str], 
                     meta: dict[str, Any]) -> Optional[tuple[list[SearchHit], dict[str, Any]]]:
-        where = "files_fts MATCH ?"
+        where_clauses = ["files_fts MATCH ?"]
         params: list[Any] = [opts.query]
         
-        if opts.repo:
-            where += " AND f.repo = ?"
-            params.append(opts.repo)
-            
-        # Get total count first
+        filter_clauses, filter_params = self._build_filter_clauses(opts)
+        where_clauses.extend(filter_clauses)
+        params.extend(filter_params)
+        
+        where = " AND ".join(where_clauses)
+        
+        # Total count
         try:
             count_sql = f"SELECT COUNT(*) as c FROM files_fts JOIN files f ON f.rowid = files_fts.rowid WHERE {where}"
             count_row = self._read.execute(count_sql, params).fetchone()
@@ -471,14 +529,10 @@ class LocalSearchDB:
             return None # FTS failed
             
         meta["total"] = total_hits
+        meta["total_mode"] = opts.total_mode
 
-        # Fetch enough to re-rank and skip offset
-        # We need to fetch (offset + limit) + buffer
-        # Buffer is important because Python post-processing (filtering) might remove some rows
-        # But here filtering is mostly done in SQL match, except for file filters that we can't do in FTS easy?
-        # Actually file filters are not in SQL for FTS table above. So we need to fetch MORE.
-        
-        fetch_limit = (opts.offset + opts.limit) * 2 # Heuristic buffer for file_types/patterns
+        # Fetch buffer to allow for Python-side re-ranking and further filtering (excludes)
+        fetch_limit = (opts.offset + opts.limit) * 2
         if fetch_limit < 100: fetch_limit = 100
         
         sql = f"""
@@ -491,7 +545,7 @@ class LocalSearchDB:
             FROM files_fts
             JOIN files f ON f.rowid = files_fts.rowid
             WHERE {where}
-            ORDER BY {"f.mtime DESC, score" if opts.recency_boost else "score"}
+            ORDER BY {"f.mtime DESC, score" if opts.recency_boost else "score"}, f.path ASC
             LIMIT ?;
         """
         params.append(int(fetch_limit))
@@ -511,17 +565,20 @@ class LocalSearchDB:
         meta["fallback_used"] = True
         
         like_q = opts.query.replace("^", "^^").replace("%", "^%").replace("_", "^_")
-        where = "f.content LIKE ? ESCAPE '^'"
+        where_clauses = ["f.content LIKE ? ESCAPE '^'"]
         params: list[Any] = [f"%{like_q}%"]
         
-        if opts.repo:
-            where += " AND f.repo = ?"
-            params.append(opts.repo)
-            
+        filter_clauses, filter_params = self._build_filter_clauses(opts)
+        where_clauses.extend(filter_clauses)
+        params.extend(filter_params)
+        
+        where = " AND ".join(where_clauses)
+        
         # Total count
         count_sql = f"SELECT COUNT(*) as c FROM files f WHERE {where}"
         count_row = self._read.execute(count_sql, params).fetchone()
         meta["total"] = int(count_row["c"]) if count_row else 0
+        meta["total_mode"] = opts.total_mode
 
         fetch_limit = (opts.offset + opts.limit) * 2
         if fetch_limit < 100: fetch_limit = 100
@@ -535,7 +592,7 @@ class LocalSearchDB:
                    f.content AS content
             FROM files f
             WHERE {where}
-            ORDER BY {"f.mtime DESC" if opts.recency_boost else "f.path"}
+            ORDER BY {"f.mtime DESC" if opts.recency_boost else "f.path"}, f.path ASC
             LIMIT ?;
         """
         params.append(int(fetch_limit))
@@ -623,6 +680,7 @@ class LocalSearchDB:
         hits.sort(key=lambda h: h.score, reverse=True)
         
         meta["total"] = len(hits) # For regex, total is what we found in the scan
+        meta["total_mode"] = "approx" # Regex is always approx in this impl
         
         start = opts.offset
         end = opts.offset + opts.limit

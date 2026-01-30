@@ -147,9 +147,14 @@ codex "안녕"
 
 **MCP 도구 사용**:
 - `search`: 키워드로 파일/코드 검색
-- `status`: 인덱스 상태 확인
+  - **Tip**: `repo` 스코프를 지정하면 정확도가 올라갑니다.
+  - **Tip**: 결과가 0건이면 필터(`type`, `path`)를 제거해보세요.
+- `status`: 인덱스 상태 및 설정 확인 (숨김 파일 포함 여부 등)
+- `list_files`: 특정 파일이 인덱스에 있는지 확인 (디버깅용)
 - `repo_candidates`: 관련 repo 후보
 
+**인덱싱 확인**:
+파일이 검색되지 않으면 `list_files path_pattern="filename"`으로 인덱스 포함 여부를 확인하세요.
 자세한 내용: `.codex/rules/00-core.md` > "Local Search 우선 원칙"
 
 ---

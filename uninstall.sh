@@ -185,8 +185,8 @@ fi
 
 if [[ -f "$SHELL_RC" ]] && grep -q "Codex Rules" "$SHELL_RC" 2>/dev/null; then
     echo_info "셸 설정 파일($SHELL_RC)에서 Codex Rules 설정 제거 중..."
-    # v2.4.x 마커와 함께 CODEX_HOME 라인 제거
-    sed -i '/# Codex Rules v2.4.[0-9] - 자동 생성됨/d' "$SHELL_RC"
+    # Codex Rules 마커와 함께 CODEX_HOME 라인 제거
+    sed -E -i '/# Codex Rules v[0-9]+\.[0-9]+\.[0-9]+ - 자동 생성됨/d' "$SHELL_RC"
     sed -i '/export CODEX_HOME=/d' "$SHELL_RC"
     echo_info "  $SHELL_RC 에서 설정을 제거했습니다."
 else
@@ -205,4 +205,3 @@ else
         echo_warn "셸 설정 파일에서 이미 제거되었는지 확인 후 새 터미널을 열거나 source 명령을 실행하세요."
     fi
 fi
-

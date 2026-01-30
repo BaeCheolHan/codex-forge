@@ -105,18 +105,23 @@ echo ""
 
 # CLI 선택 프롬프트 (미지정 시)
 if [[ -z "$CLI_MODE" ]]; then
-    echo ""
-    echo "지원할 CLI를 선택하세요:"
-    echo "  1) Codex CLI만"
-    echo "  2) Gemini CLI만"
-    echo "  3) 모두 (권장)"
-    echo ""
-    read -rp "선택 (1/2/3) [3]: " cli_choice
-    case "$cli_choice" in
-        1|codex) CLI_MODE="codex" ;;
-        2|gemini) CLI_MODE="gemini" ;;
-        *) CLI_MODE="all" ;;
-    esac
+    if [[ ! -t 0 ]]; then
+        CLI_MODE="all"
+        echo_warn "비대화 환경 감지: 기본값(--all) 사용"
+    else
+        echo ""
+        echo "지원할 CLI를 선택하세요:"
+        echo "  1) Codex CLI만"
+        echo "  2) Gemini CLI만"
+        echo "  3) 모두 (권장)"
+        echo ""
+        read -rp "선택 (1/2/3) [3]: " cli_choice
+        case "$cli_choice" in
+            1|codex) CLI_MODE="codex" ;;
+            2|gemini) CLI_MODE="gemini" ;;
+            *) CLI_MODE="all" ;;
+        esac
+    fi
 fi
 
 echo_info "CLI 모드: $CLI_MODE"
@@ -288,6 +293,9 @@ install_shared() {
                 fi
             done
             if [[ "$RULES_OVERWRITE" == "yes" ]]; then
+                if [[ "$MODE" == "update" && -d ".codex/rules" ]]; then
+                    rm -rf ".codex/rules"
+                fi
                 if [[ -d "$SOURCE_DIR/.codex/rules" ]]; then
                     cp -r "$SOURCE_DIR/.codex/rules" ".codex/"
                 fi

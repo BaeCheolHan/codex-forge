@@ -182,6 +182,7 @@ class Indexer:
             except Exception:
                 self.status.errors += 1
 
+        self.db.clear_stats_cache()
         self.status.last_scan_ts = time.time()
         self.status.scanned_files = scanned
         self.status.indexed_files = indexed

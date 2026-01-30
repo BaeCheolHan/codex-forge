@@ -315,6 +315,20 @@ class LocalSearchMCPServer:
         limit = min(int(args.get("limit", 10)), 50)
         offset = max(int(args.get("offset", 0)), 0)
 
+        # Determine total_mode based on scale (v2.5.1)
+        total_mode = "exact"
+        if self.db:
+            status = self.db.get_index_status()
+            total_files = status.get("total_files", 0)
+            repo_stats = self.db.get_repo_stats()
+            total_repos = len(repo_stats)
+            
+            if total_repos > 50 or total_files > 150000:
+                total_mode = "approx"
+            elif total_repos > 20 or total_files > 50000:
+                if args.get("path_pattern"):
+                    total_mode = "approx"
+
         opts = SearchOptions(
             query=query,
             repo=repo,
@@ -327,6 +341,7 @@ class LocalSearchMCPServer:
             recency_boost=bool(args.get("recency_boost", False)),
             use_regex=bool(args.get("use_regex", False)),
             case_sensitive=bool(args.get("case_sensitive", False)),
+            total_mode=total_mode,
         )
         
         hits, db_meta = self.db.search_v2(opts)
@@ -368,12 +383,15 @@ class LocalSearchMCPServer:
         
         scope = f"repo:{opts.repo}" if opts.repo else "workspace"
         
-        # Total/HasMore Logic (Accuracy Warning)
-        is_exact_total = True
-        if opts.file_types or opts.path_pattern or opts.exclude_patterns:
-            is_exact_total = False
-        
+        # Total/HasMore Logic (v2.5.1 Accuracy)
         total = db_meta.get("total", len(results))
+        total_mode = db_meta.get("total_mode", "exact")
+        
+        # Even if SQL total is exact, exclude_patterns might reduce it further
+        is_exact_total = (total_mode == "exact")
+        if opts.exclude_patterns and total > 0:
+             is_exact_total = False
+        
         has_more = total > (offset + limit)
         
         warnings = []
@@ -398,7 +416,9 @@ class LocalSearchMCPServer:
             "query": query,
             "scope": scope,
             "total": total,
+            "total_mode": total_mode,
             "is_exact_total": is_exact_total,
+            "approx_total": total if total_mode == "approx" else None,
             "limit": limit,
             "offset": offset,
             "has_more": has_more,
@@ -408,6 +428,7 @@ class LocalSearchMCPServer:
             "repo_summary": repo_groups,
             "top_candidate_repos": top_repos,
             "meta": {
+                "total_mode": total_mode,
                 "fallback_used": db_meta.get("fallback_used", False),
                 "fallback_reason_code": fallback_reason_code,
                 "total_scanned": db_meta.get("total_scanned", 0),
@@ -418,14 +439,26 @@ class LocalSearchMCPServer:
         
         if not results:
             reason = "No matches found."
-            if opts.path_pattern or opts.file_types:
-                reason = "No matches found with current filters."
+            active_filters = []
+            if opts.repo: active_filters.append(f"repo='{opts.repo}'")
+            if opts.file_types: active_filters.append(f"file_types={opts.file_types}")
+            if opts.path_pattern: active_filters.append(f"path_pattern='{opts.path_pattern}'")
+            if opts.exclude_patterns: active_filters.append(f"exclude_patterns={opts.exclude_patterns}")
+            
+            if active_filters:
+                reason = f"No matches found with filters: {', '.join(active_filters)}"
+            
             output["meta"]["fallback_reason"] = reason
-            output["hints"] = [
+            
+            hints = [
                 "Try a broader query or remove filters.",
                 "Check if the file is indexed using 'list_files' tool.",
                 "If searching for a specific pattern, try 'use_regex=true'."
             ]
+            if opts.file_types or opts.path_pattern:
+                hints.insert(0, "Try removing 'file_types' or 'path_pattern' filters.")
+            
+            output["hints"] = hints
         
         return {
             "content": [{"type": "text", "text": json.dumps(output, indent=2, ensure_ascii=False)}],
@@ -444,6 +477,15 @@ class LocalSearchMCPServer:
             "workspace_root": self.workspace_root,
             "server_version": self.SERVER_VERSION,
         }
+        
+        # v2.5.2: Add config info for debugging
+        if self.cfg:
+            status["config"] = {
+                "include_ext": self.cfg.include_ext,
+                "exclude_dirs": self.cfg.exclude_dirs,
+                "exclude_globs": getattr(self.cfg, "exclude_globs", []),
+                "max_file_bytes": self.cfg.max_file_bytes,
+            }
         
         if details and self.db:
             status["repo_stats"] = self.db.get_repo_stats()

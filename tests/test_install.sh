@@ -115,7 +115,7 @@ test_agents_md_pointer_content() {
     fi
     
     # .codex/AGENTS.md가 실제 내용을 가지는지 확인
-    if grep -q "v2.4.2" "$TEST_DIR/.codex/AGENTS.md"; then
+    if grep -q "v2.5.0" "$TEST_DIR/.codex/AGENTS.md"; then
         echo_pass ".codex/AGENTS.md에 버전 정보 포함"
     else
         echo_fail ".codex/AGENTS.md에 버전 정보 없음"
@@ -221,7 +221,7 @@ test_update_mode_install() {
     echo "# Modified Rule" > "$TEST_DIR/.codex/rules/00-core.md"
 
     # 3. Run Update
-    run_install --update > /dev/null
+    run_install --all --update > /dev/null
 
     # 4. Verify Preservation
     if [[ -f "$TEST_DIR/docs/user_doc.md" ]]; then
