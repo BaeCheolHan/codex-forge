@@ -1,5 +1,5 @@
 #!/bin/bash
-# Codex Rules v2.3.3 - 언인스톨 스크립트
+# Codex Rules v2.4.3 - 언인스톨 스크립트
 # 사용법: ./uninstall.sh [workspace_root] [--force]
 
 set -euo pipefail
@@ -81,9 +81,22 @@ if [[ -d "$WORKSPACE_ROOT/.codex" ]]; then
     ITEMS_DESC+=("  - .codex/ (룰셋, 도구, 설정)")
 fi
 
-if [[ -d "$WORKSPACE_ROOT/docs" ]]; then
-    # Check if docs contains codex-related files
-    if [[ -d "$WORKSPACE_ROOT/docs/_meta" ]]; then
+if [[ -d "$WORKSPACE_ROOT/docs" && -d "$WORKSPACE_ROOT/docs/_meta" ]]; then
+    if [[ "$FORCE" != true ]]; then
+        read -rp "문서(docs/) 폴더도 삭제하시겠습니까? (yes/no) [no]: " remove_docs
+        if [[ "$remove_docs" == "yes" || "$remove_docs" == "y" ]]; then
+            ITEMS_TO_REMOVE+=("$WORKSPACE_ROOT/docs")
+            ITEMS_DESC+=("  - docs/ (공유 문서)")
+        else
+            echo "  [KEEP] docs/ 폴더는 보존됩니다."
+        fi
+    else
+        # Force mode: default to keep unless --all is specified (future) or just keep safe
+        # For now, let's correspond to conservative approach: keep docs in force mode?
+        # Actually, standard uninstall usually removes everything. 
+        # But to be safe, let's exclude docs from force remove unless explicitly added.
+        # Let's add it but maybe we need a flag? 
+        # For simplicity in this script: Force remove includes docs to ensure clean state.
         ITEMS_TO_REMOVE+=("$WORKSPACE_ROOT/docs")
         ITEMS_DESC+=("  - docs/ (공유 문서)")
     fi
@@ -140,19 +153,42 @@ echo_info "언인스톨 완료!"
 echo_info "=========================================="
 echo ""
 
-# Remind about shell config
-echo "추가 정리가 필요할 수 있습니다:"
-echo ""
-echo "1. 셸 설정 파일에서 CODEX_HOME 제거:"
-echo "   ~/.zshrc 또는 ~/.bash_profile에서 다음 라인 삭제:"
-echo "   export CODEX_HOME=\"...\""
-echo ""
-echo "2. 변경 적용:"
-echo "   source ~/.zshrc  # 또는 source ~/.bash_profile"
-echo ""
-
-# Check if CODEX_HOME is set
-if [[ -n "${CODEX_HOME:-}" ]]; then
-    echo_warn "현재 CODEX_HOME이 설정되어 있습니다: $CODEX_HOME"
-    echo_warn "셸 설정 파일에서 제거 후 새 터미널을 열거나 source 명령을 실행하세요."
+# Check for shell config and attempt cleanup
+echo_info "셸 설정 파일 확인 중..."
+if [[ -n "${ZSH_VERSION:-}" ]] || [[ "$SHELL" == *"zsh"* ]]; then
+    SHELL_RC="$HOME/.zshrc"
+elif [[ -n "${BASH_VERSION:-}" ]] || [[ "$SHELL" == *"bash"* ]]; then
+    if [[ -f "$HOME/.bashrc" ]]; then
+        SHELL_RC="$HOME/.bashrc"
+    elif [[ -f "$HOME/.bash_profile" ]]; then
+        SHELL_RC="$HOME/.bash_profile"
+    else
+        SHELL_RC="$HOME/.bashrc"
+    fi
+else
+    SHELL_RC="$HOME/.profile"
 fi
+
+if [[ -f "$SHELL_RC" ]] && grep -q "Codex Rules" "$SHELL_RC" 2>/dev/null; then
+    echo_info "셸 설정 파일($SHELL_RC)에서 Codex Rules 설정 제거 중..."
+    # v2.4.x 마커와 함께 CODEX_HOME 라인 제거
+    sed -i '/# Codex Rules v2.4.[0-9] - 자동 생성됨/d' "$SHELL_RC"
+    sed -i '/export CODEX_HOME=/d' "$SHELL_RC"
+    echo_info "  $SHELL_RC 에서 설정을 제거했습니다."
+else
+    # Check if CODEX_HOME is set if auto-cleanup didn't run or find it
+    if [[ -n "${CODEX_HOME:-}" ]]; then
+        echo "추가 정리가 필요할 수 있습니다:"
+        echo ""
+        echo "1. 셸 설정 파일에서 CODEX_HOME 제거:"
+        echo "   ~/.zshrc 또는 ~/.bash_profile에서 다음 라인 삭제:"
+        echo "   export CODEX_HOME=\"...\""
+        echo ""
+        echo "2. 변경 적용:"
+        echo "   source ~/.zshrc  # 또는 source ~/.bash_profile"
+        echo ""
+        echo_warn "현재 CODEX_HOME이 설정되어 있습니다: $CODEX_HOME"
+        echo_warn "셸 설정 파일에서 이미 제거되었는지 확인 후 새 터미널을 열거나 source 명령을 실행하세요."
+    fi
+fi
+

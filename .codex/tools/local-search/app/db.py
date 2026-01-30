@@ -20,6 +20,7 @@ class SearchHit:
     size: int = 0
     match_count: int = 0
     file_type: str = ""
+    hit_reason: str = ""  # v2.4.3: Added hit reason
 
 
 @dataclass
@@ -113,6 +114,19 @@ class LocalSearchDB:
                 );
                 """
             )
+            
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS repo_meta (
+                  repo_name TEXT PRIMARY KEY,
+                  tags TEXT,
+                  domain TEXT,
+                  description TEXT,
+                  priority INTEGER DEFAULT 0
+                );
+                """
+            )
+
             # Index for efficient filtering
             cur.execute("CREATE INDEX IF NOT EXISTS idx_files_repo ON files(repo);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_files_mtime ON files(mtime DESC);")
@@ -202,6 +216,28 @@ class LocalSearchDB:
     def count_files(self) -> int:
         row = self._read.execute("SELECT COUNT(1) AS c FROM files").fetchone()
         return int(row["c"]) if row else 0
+
+    def upsert_repo_meta(self, repo_name: str, tags: str = "", domain: str = "", description: str = "", priority: int = 0) -> None:
+        """Upsert repository metadata (v2.4.3)."""
+        with self._lock:
+            self._write.execute(
+                """
+                INSERT OR REPLACE INTO repo_meta (repo_name, tags, domain, description, priority)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (repo_name, tags, domain, description, priority)
+            )
+            self._write.commit()
+
+    def get_repo_meta(self, repo_name: str) -> Optional[dict[str, Any]]:
+        """Get metadata for a specific repo."""
+        row = self._read.execute("SELECT * FROM repo_meta WHERE repo_name = ?", (repo_name,)).fetchone()
+        return dict(row) if row else None
+
+    def get_all_repo_meta(self) -> dict[str, dict[str, Any]]:
+        """Get all repo metadata as a map."""
+        rows = self._read.execute("SELECT * FROM repo_meta").fetchall()
+        return {row["repo_name"]: dict(row) for row in rows}
 
     def list_files(
         self, 
@@ -593,11 +629,20 @@ class LocalSearchDB:
 
     def _process_rows(self, rows: list, opts: SearchOptions, 
                       terms: list[str]) -> list[SearchHit]:
-        """Process raw DB rows into SearchHit objects with filtering."""
+        """Process raw DB rows into SearchHit objects with enhanced ranking."""
         hits: list[SearchHit] = []
         
+        all_meta = self.get_all_repo_meta()
+        query_terms = [t.lower() for t in terms]
+        query_raw_lower = opts.query.lower()
+        
+        # Pre-compile symbol regex for performance
+        # Matches: class X, def X, function X, struct X, pub fn X, async def X
+        symbol_pattern = re.compile(r"^\s*(class|def|function|struct|pub\s+fn|async\s+def|interface|type)\s+", re.MULTILINE)
+
         for r in rows:
             path = r["path"]
+            repo_name = r["repo"]
             content = r["content"] or ""
             mtime = int(r["mtime"])
             size = int(r["size"])
@@ -610,9 +655,61 @@ class LocalSearchDB:
             if self._matches_exclude_patterns(path, opts.exclude_patterns):
                 continue
             
-            # Calculate score
+            # Calculate score (negate BM25 if applicable)
             base_score = float(r["score"]) if r["score"] is not None else 0.0
-            score = -base_score  # BM25 returns negative, so negate
+            score = -base_score if base_score < 0 else base_score
+            
+            reasons = []
+            
+            path_lower = path.lower()
+            path_parts = path_lower.split("/")
+            filename = path_parts[-1]
+            file_stem = Path(filename).stem
+
+            # 1. Exact Match Boost (Highest Priority)
+            # Compare with file stem (auth.py -> auth)
+            if file_stem == query_raw_lower:
+                score += 50.0
+                reasons.append("Exact filename match")
+            elif path_lower.endswith(query_raw_lower):
+                score += 40.0
+                reasons.append("Path suffix match")
+            
+            # 2. Path Segment / Filename Boost
+            # If query is part of filename or a path segment
+            if query_raw_lower in filename:
+                score += 20.0
+                reasons.append("Filename match")
+            
+            for part in path_parts[:-1]: # Check dirs
+                if part == query_raw_lower:
+                    score += 15.0
+                    reasons.append(f"Dir match ({part})")
+                    break # Count once
+            
+            # 3. MSA Meta Boost (v2.4.3)
+            meta = all_meta.get(repo_name)
+            if meta:
+                # Priority boost
+                if meta["priority"] > 0:
+                    score += meta["priority"]
+                    reasons.append("High priority")
+                
+                # Tag/Domain match boost
+                tags = meta["tags"].lower().split(",")
+                domain = meta["domain"].lower()
+                for term in query_terms:
+                    if term in tags or term == domain:
+                        score += 5.0
+                        reasons.append(f"Tag match ({term})")
+                        break # Only boost once for tags
+            
+            # 4. Core File Boost (v2.4.3)
+            if any(p in path_lower for p in [".codex/", "agents.md", "gemini.md", "readme.md"]):
+                score += 2.0
+                reasons.append("Core file")
+            
+            # 5. Recency Boost
             if opts.recency_boost:
                 score = self._calculate_recency_score(mtime, score)
             
@@ -622,15 +719,22 @@ class LocalSearchDB:
             # Generate snippet
             snippet = self._snippet_around(content, terms, opts.snippet_lines, highlight=True)
             
+            # 6. Symbol Definition Boost (Content analysis)
+            # Check if snippet contains definition patterns
+            if symbol_pattern.search(snippet):
+                score += 10.0
+                reasons.append("Symbol definition")
+
             hits.append(SearchHit(
-                repo=r["repo"],
+                repo=repo_name,
                 path=path,
-                score=score,
+                score=round(score, 3),
                 snippet=snippet,
                 mtime=mtime,
                 size=size,
                 match_count=match_count,
                 file_type=self._get_file_extension(path),
+                hit_reason=", ".join(reasons) if reasons else "Content match"
             ))
         
         # Sort by score

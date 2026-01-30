@@ -46,6 +46,8 @@
     "target",
     "build",
     "dist",
+    "coverage",
+    "vendor",
     ".idea",
     ".vscode"
   ],
@@ -56,6 +58,7 @@
     "*.lock",
     "package-lock.json",
     "yarn.lock",
+    "pnpm-lock.yaml",
     ".env",
     ".env.*",
     "*.pem",

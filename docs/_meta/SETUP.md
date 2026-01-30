@@ -1,8 +1,8 @@
-# SETUP (v2.3.3)
+# SETUP (v2.4.3)
 
 > 이 문서는 포인터가 아니라 **정본**이다. 이 zip만으로 설치(1회)·적용(repo별)·진단(status)·업데이트까지 끝낸다.
 >
-> **v2.3.3 핵심 변경**: 경로 구조 변경 (`codex/` → `.codex/`, `tools/` → `.codex/tools/`). MCP 방식으로 local-search 자동 관리.
+> **v2.4.3 핵심 변경**: Multi-CLI 지원 (Codex/Gemini) 및 버전 정합성 통일.
 
 ---
 
@@ -12,7 +12,7 @@
 
 ```bash
 # 압축 해제 후 (로컬 패키지 사용)
-cd codex-rules-v2.3.3-workspace-msa
+cd codex-rules-v2.4.3-workspace-msa
 ./install.sh ~/Documents/repositories  # 또는 ~/documents/repositories
 
 # 셸 설정 적용
@@ -52,13 +52,13 @@ cd ~/Documents/repositories
 touch .codex-root
 
 # 3. 룰셋 압축 해제
-unzip /path/to/codex-rules-v2.3.3-workspace-msa.zip -d /tmp
-# 주의: zip은 codex-rules-v2.3.3-workspace-msa/ 폴더를 생성함
+unzip /path/to/codex-rules-v2.4.3-workspace-msa.zip -d /tmp
+# 주의: zip은 codex-rules-v2.4.3-workspace-msa/ 폴더를 생성함
 
 # 4. 파일 복사 (폴더 내용물을 workspace root로)
-cp -r /tmp/codex-rules-v2.3.3-workspace-msa/* .
-cp -r /tmp/codex-rules-v2.3.3-workspace-msa/.codex .
-cp /tmp/codex-rules-v2.3.3-workspace-msa/.codex-root .
+cp -r /tmp/codex-rules-v2.4.3-workspace-msa/* .
+cp -r /tmp/codex-rules-v2.4.3-workspace-msa/.codex .
+cp /tmp/codex-rules-v2.4.3-workspace-msa/.codex-root .
 
 # 5. 환경변수 설정
 echo 'export CODEX_HOME="$HOME/Documents/repositories/.codex"' >> ~/.zshrc
@@ -158,5 +158,5 @@ cd /path/to/new/version
 
 ```bash
 head -1 ~/Documents/repositories/.codex/AGENTS.md
-# 예상: # Codex Rules v2.3.3 (workspace-msa)
+# 예상: # Codex Rules v2.4.3
 ```

@@ -1,4 +1,4 @@
-# Codex Rules v2.4.2
+# Codex Rules v2.4.3
 
 MSA 환경에서 AI CLI(Codex CLI, Gemini CLI)를 효과적으로 사용하기 위한 룰셋입니다.
 

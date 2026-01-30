@@ -1,4 +1,5 @@
 import fnmatch
+import json
 import os
 import re
 import threading
@@ -94,12 +95,37 @@ class Indexer:
             self.status.errors += 1
             return
 
+        # 1. Collect all candidate files with stat info for prioritization
+        file_entries = []
+        for file_path in self._iter_files(root):
+            try:
+                st = file_path.stat()
+                if st.st_size > self.cfg.max_file_bytes:
+                    continue
+                file_entries.append((file_path, st))
+            except Exception:
+                continue
+        
+        # 2. Prioritize: Recent files first + Core files (v2.5.0)
+        now = time.time()
+        def sort_key(entry):
+            path, st = entry
+            rel_lower = str(path.relative_to(root)).lower()
+            score = st.st_mtime # Base: mtime
+            # Priority Boost: Core metadata files
+            if any(p in rel_lower for p in ["agents.md", "gemini.md", "service.json", "repo.yaml"]):
+                score += 10**9 # Future boost
+            return score
+
+        file_entries.sort(key=sort_key, reverse=True)
+
+        # 3. Process files with Smart Delta Scan & AI Safety Net
         scanned = 0
         indexed = 0
         batch: List[Tuple[str, str, int, int, str]] = []
         batch_size = max(50, int(getattr(self.cfg, "commit_batch_size", 500)))
 
-        for file_path in self._iter_files(root):
+        for file_path, st in file_entries:
             scanned += 1
             try:
                 rel = str(file_path.relative_to(root))
@@ -111,16 +137,20 @@ class Indexer:
                 if not repo:
                     continue
 
-                st = file_path.stat()
-                if st.st_size > self.cfg.max_file_bytes:
-                    continue
-
-                # Skip unchanged files (mtime/size)
+                # Smart Delta Scan: Check mtime & size
                 prev = self.db.get_file_meta(rel)
+                is_changed = True
                 if prev is not None:
                     prev_mtime, prev_size = prev
+                    # Meta match?
                     if int(st.st_mtime) == int(prev_mtime) and int(st.st_size) == int(prev_size):
-                        continue
+                        # AI Safety Net: If modified within last 3 seconds, force re-index
+                        # because sub-second changes might have same mtime/size in some FS
+                        if now - st.st_mtime > 3.0:
+                            is_changed = False
+                
+                if not is_changed:
+                    continue
 
                 try:
                     text = file_path.read_text(encoding="utf-8", errors="ignore")
@@ -129,6 +159,11 @@ class Indexer:
 
                 if getattr(self.cfg, "redact_enabled", True):
                     text = _redact(text)
+
+                # Process meta files (v2.4.3)
+                fn = file_path.name.lower()
+                if fn in ("service.json", "repo.yaml", "package.json"):
+                    self._process_meta_file(file_path, repo)
 
                 batch.append((rel, repo, int(st.st_mtime), int(st.st_size), text))
 
@@ -150,6 +185,42 @@ class Indexer:
         self.status.last_scan_ts = time.time()
         self.status.scanned_files = scanned
         self.status.indexed_files = indexed
+
+    def _process_meta_file(self, file_path: Path, repo: str) -> None:
+        """Extract metadata from config files (v2.4.3)."""
+        tags = []
+        domain = ""
+        description = ""
+        
+        try:
+            name = file_path.name.lower()
+            if name == "service.json":
+                data = json.loads(file_path.read_text(encoding="utf-8", errors="ignore"))
+                tags = data.get("tags", [])
+                domain = data.get("domain", "")
+                description = data.get("description", "")
+            elif name == "repo.yaml":
+                # Basic line parsing for yaml to avoid dependency
+                text = file_path.read_text(encoding="utf-8", errors="ignore")
+                for line in text.splitlines():
+                    if ":" in line:
+                        k, v = line.split(":", 1)
+                        k, v = k.strip().lower(), v.strip().strip('"').strip("'")
+                        if k == "domain": domain = v
+                        elif k == "description": description = v
+                        elif k == "tags":
+                            tags = [t.strip() for t in v.strip("[]").split(",")]
+            elif name == "package.json":
+                data = json.loads(file_path.read_text(encoding="utf-8", errors="ignore"))
+                description = data.get("description", "")
+                if "keywords" in data:
+                    tags = data.get("keywords", [])
+
+            if tags or domain or description:
+                tag_str = ",".join(tags) if isinstance(tags, list) else str(tags)
+                self.db.upsert_repo_meta(repo, tags=tag_str, domain=domain, description=description)
+        except Exception:
+            pass
 
     def _iter_files(self, root: Path) -> Iterable[Path]:
         include_ext = set((self.cfg.include_ext or []))

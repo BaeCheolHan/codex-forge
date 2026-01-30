@@ -40,7 +40,7 @@ class LocalSearchMCPServer:
     
     PROTOCOL_VERSION = "2025-11-25"
     SERVER_NAME = "local-search"
-    SERVER_VERSION = "2.4.2"  # Multi-workspace support + Search UX enhancements
+    SERVER_VERSION = "2.4.3"  # MSA-aware Search & Result Grouping
     
     def __init__(self, workspace_root: str):
         self.workspace_root = workspace_root
@@ -72,8 +72,8 @@ class LocalSearchMCPServer:
                     db_path=str(Path(self.workspace_root) / ".codex" / "tools" / "local-search" / "data" / "index.db"),
                     include_ext=[".py", ".js", ".ts", ".java", ".kt", ".go", ".rs", ".md", ".json", ".yaml", ".yml", ".sh"],
                     include_files=["pom.xml", "package.json", "Dockerfile", "Makefile", "build.gradle", "settings.gradle"],
-                    exclude_dirs=[".git", "node_modules", "__pycache__", ".venv", "venv", "target", "build", "dist"],
-                    exclude_globs=["*.min.js", "*.min.css", "*.map", "*.lock"],
+                    exclude_dirs=[".git", "node_modules", "__pycache__", ".venv", "venv", "target", "build", "dist", "coverage", "vendor"],
+                    exclude_globs=["*.min.js", "*.min.css", "*.map", "*.lock", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"],
                     redact_enabled=True,
                     commit_batch_size=500,
                 )
@@ -191,8 +191,17 @@ class LocalSearchMCPServer:
                                 "type": "integer",
                                 "description": "Number of context lines in snippet (default: 5)",
                                 "default": 5,
+                             },
+                            "scope": {
+                                "type": "string",
+                                "description": "Search scope: 'workspace' or repo name (alias for 'repo')",
                             },
-                        },
+                            "type": {
+                                "type": "string",
+                                "enum": ["docs", "code"],
+                                "description": "Filter by type: 'docs' (md, txt, pdf, docx) or 'code' (all other indexed)",
+                            },
+                         },
                         "required": ["query"],
                     },
                 },
@@ -291,12 +300,27 @@ class LocalSearchMCPServer:
             }
         
         # Build SearchOptions from args
+        repo = args.get("scope") or args.get("repo")
+        if repo == "workspace":
+            repo = None
+        
+        file_types = list(args.get("file_types", []))
+        
+        # Preset 'type' logic (v2.4.3)
+        search_type = args.get("type")
+        if search_type == "docs":
+            doc_exts = ["md", "txt", "pdf", "docx", "rst", "pdf"]
+            file_types.extend([e for e in doc_exts if e not in file_types])
+        elif search_type == "code":
+            # Just a hint for now, could be used for exclusion of docs if needed
+            pass
+
         opts = SearchOptions(
             query=query,
-            repo=args.get("repo"),
+            repo=repo,
             limit=min(int(args.get("limit", 10)), 50),
             snippet_lines=int(args.get("context_lines", 5)),
-            file_types=args.get("file_types", []),
+            file_types=file_types,
             path_pattern=args.get("path_pattern"),
             exclude_patterns=args.get("exclude_patterns", []),
             recency_boost=bool(args.get("recency_boost", False)),
@@ -311,7 +335,8 @@ class LocalSearchMCPServer:
             result = {
                 "repo": hit.repo,
                 "path": hit.path,
-                "score": round(hit.score, 3),
+                "score": hit.score,
+                "reason": hit.hit_reason,
                 "snippet": hit.snippet,
             }
             # Include enhanced metadata
@@ -325,7 +350,19 @@ class LocalSearchMCPServer:
                 result["file_type"] = hit.file_type
             results.append(result)
         
-        # v2.4.2 Enhanced Metadata & UX
+        # v2.4.3 Result Grouping & Summary
+        repo_groups = {}
+        for r in results:
+            repo = r["repo"]
+            if repo not in repo_groups:
+                repo_groups[repo] = {"count": 0, "top_score": 0.0}
+            repo_groups[repo]["count"] += 1
+            repo_groups[repo]["top_score"] = max(repo_groups[repo]["top_score"], r["score"])
+        
+        # Sort repos by top_score
+        sorted_repos = sorted(repo_groups.keys(), key=lambda k: repo_groups[k]["top_score"], reverse=True)
+        top_repos = sorted_repos[:2]
+        
         index_status = self.db.get_index_status()
         scope = f"repo:{opts.repo}" if opts.repo else "workspace"
         
@@ -333,7 +370,9 @@ class LocalSearchMCPServer:
             "query": query,
             "scope": scope,
             "total_results": len(results),
+            "top_candidate_repos": top_repos,
             "results": results,
+            "repo_summary": repo_groups,
             "meta": {
                 "fallback_used": db_meta.get("fallback_used", False),
                 "total_scanned_in_db": db_meta.get("total_scanned", 0),

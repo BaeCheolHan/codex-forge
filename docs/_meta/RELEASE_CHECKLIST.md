@@ -1,4 +1,4 @@
-# Release Checklist v2.3.3
+# Release Checklist v2.4.3
 
 > **목적**: 버그 재발 방지 + 문서-코드 정합성 보장 + MCP 통합 검증
 
@@ -8,27 +8,27 @@
 
 ### 1.1. 전수 검증
 ```bash
-# v2.3.3이어야 하는 파일들 (이전 2.3.x 잔재 확인)
-grep -r "v2\.3\.[0-2]" --include="*.md" --include="*.sh" --include="*.toml" . 2>/dev/null | grep -v CHANGELOG | grep -v SELF_REVIEW
+# v2.4.3이어야 하는 파일들 (이전 2.3.x 잔재 확인)
+grep -r "v2\.[0-3]\.[0-9]" --include="*.md" --include="*.sh" --include="*.toml" . 2>/dev/null | grep -v CHANGELOG | grep -v SELF_REVIEW
 
 # 예상 결과: 0 matches (CHANGELOG/SELF_REVIEW의 히스토리 제외)
 ```
 
 ### 1.2. 필수 업데이트 위치
-- [ ] `README.md` 헤더: `# Codex Rules v2.3.3`
-- [ ] `.codex/AGENTS.md` 헤더: `# Codex Rules v2.3.3 (workspace-msa)`
-- [ ] `.codex/system-prompt.txt` 1행: `Codex Rules v2.3.3`
-- [ ] `.codex/config.toml` 주석: `v2.3.3`
-- [ ] `.codex/quick-start.md` 설치 명령/zip명: `v2.3.3`
-- [ ] `docs/_meta/SETUP.md` 헤더: `# SETUP (v2.3.3)`
-- [ ] `docs/_meta/SELF_REVIEW.md` 헤더: `# SELF_REVIEW (v2.3.3)`
-- [ ] `docs/_meta/RELEASE_CHECKLIST.md` 헤더: `Release Checklist v2.3.3`
-- [ ] `docs/_meta/CHANGELOG.md` 최신 항목: `v2.3.3`
-- [ ] `docs/_meta/VERSIONING.md` 현재 버전: `v2.3.3`
-- [ ] `install.sh` 헤더/메시지: `v2.3.3`
-- [ ] `uninstall.sh` 헤더: `v2.3.3`
+- [ ] `README.md` 헤더: `# Codex Rules v2.4.3`
+- [ ] `.codex/AGENTS.md` 헤더: `# Codex Rules v2.4.3 (workspace-msa)`
+- [ ] `.codex/system-prompt.txt` 1행: `Codex Rules v2.4.3`
+- [ ] `.codex/config.toml` 주석: `v2.4.3`
+- [ ] `.codex/quick-start.md` 설치 명령/zip명: `v2.4.3`
+- [ ] `docs/_meta/SETUP.md` 헤더: `# SETUP (v2.4.3)`
+- [ ] `docs/_meta/SELF_REVIEW.md` 헤더: `# SELF_REVIEW (v2.4.3)`
+- [ ] `docs/_meta/RELEASE_CHECKLIST.md` 헤더: `Release Checklist v2.4.3`
+- [ ] `docs/_meta/CHANGELOG.md` 최신 항목: `v2.4.3`
+- [ ] `docs/_meta/VERSIONING.md` 현재 버전: `v2.4.3`
+- [ ] `install.sh` 헤더/메시지: `v2.4.3`
+- [ ] `uninstall.sh` 헤더: `v2.4.3`
 - [ ] `.codex/tools/local-search/mcp/server.py` SERVER_VERSION: `"2.3.3"`
-- [ ] 폴더/zip명: `codex-rules-v2.3.3-workspace-msa`
+- [ ] 폴더/zip명: `codex-rules-v2.4.3-workspace-msa`
 
 ---
 
@@ -89,10 +89,10 @@ fi
 
 ### 3.2. 압축 해제 및 설치
 ```bash
-cp /path/to/codex-rules-v2.3.3-workspace-msa.zip .
-unzip codex-rules-v2.3.3-workspace-msa.zip
+cp /path/to/codex-rules-v2.4.3-workspace-msa.zip .
+unzip codex-rules-v2.4.3-workspace-msa.zip
 
-cd codex-rules-v2.3.3-workspace-msa
+cd codex-rules-v2.4.3-workspace-msa
 ./install.sh "$TEST_ROOT/repositories" --quit
 
 # 예상: 정상 진행, MCP 서버 테스트 통과
@@ -187,16 +187,16 @@ find . -name "*.pyc" -o -name "__pycache__" -o -name ".DS_Store" -o -name "serve
 ### 8.1. 압축 테스트
 ```bash
 cd /path/to/source
-zip -r codex-rules-v2.3.3-workspace-msa.zip codex-rules-v2.3.3-workspace-msa \
+zip -r codex-rules-v2.4.3-workspace-msa.zip codex-rules-v2.4.3-workspace-msa \
     -x "*.pyc" -x "*__pycache__*" -x "*.DS_Store" -x "*index.db"
 
-unzip -t codex-rules-v2.3.3-workspace-msa.zip
+unzip -t codex-rules-v2.4.3-workspace-msa.zip
 ```
 
 ### 8.2. 압축 해제 후 MCP 테스트
 ```bash
-unzip codex-rules-v2.3.3-workspace-msa.zip -d /tmp/test-unzip
-cd /tmp/test-unzip/codex-rules-v2.3.3-workspace-msa
+unzip codex-rules-v2.4.3-workspace-msa.zip -d /tmp/test-unzip
+cd /tmp/test-unzip/codex-rules-v2.4.3-workspace-msa
 
 echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | \
     python3 .codex/tools/local-search/mcp/server.py
@@ -219,7 +219,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | \
 - [ ] 7. 런타임 파일: 0개 PASS
 - [ ] 8. 압축 테스트: 정상 PASS
 
-**FAIL 시**: v2.3.3-rc1 → 수정 → v2.3.3-rc2 → ... → v2.3.3 Stable
+**FAIL 시**: v2.4.3-rc1 → 수정 → v2.4.3-rc2 → ... → v2.4.3 Stable
 
 ---
 

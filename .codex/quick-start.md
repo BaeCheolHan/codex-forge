@@ -11,7 +11,7 @@
 
 ```bash
 # 압축 해제 후 (로컬 패키지 사용)
-cd codex-rules-v2.3.3-workspace-msa
+cd codex-rules-v2.4.3-workspace-msa
 ./install.sh ~/Documents/repositories  # 또는 ~/documents/repositories
 source ~/.zshrc  # 또는 ~/.bash_profile
 
@@ -68,11 +68,11 @@ cd ~/Documents/repositories
 touch .codex-root
 
 # 3. 룰셋 압축 해제 + 복사
-unzip /path/to/codex-rules-v2.3.3-workspace-msa.zip -d /tmp
-# 주의: zip은 codex-rules-v2.3.3-workspace-msa/ 폴더를 생성함
-cp -r /tmp/codex-rules-v2.3.3-workspace-msa/.codex .
-cp -r /tmp/codex-rules-v2.3.3-workspace-msa/docs .
-cp /tmp/codex-rules-v2.3.3-workspace-msa/.codex-root .
+unzip /path/to/codex-rules-v2.4.3-workspace-msa.zip -d /tmp
+# 주의: zip은 codex-rules-v2.4.3-workspace-msa/ 폴더를 생성함
+cp -r /tmp/codex-rules-v2.4.3-workspace-msa/.codex .
+cp -r /tmp/codex-rules-v2.4.3-workspace-msa/docs .
+cp /tmp/codex-rules-v2.4.3-workspace-msa/.codex-root .
 # 결과: .codex/, docs/ 생성됨 (깔끔!)
 
 # 4. 환경변수 설정 (선택, 셸 프로필에 추가)

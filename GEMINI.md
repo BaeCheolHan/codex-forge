@@ -1,8 +1,8 @@
-# Codex Rules v2.4.2 (Gemini CLI)
+# Codex Rules v2.4.3 (Gemini CLI)
 
 > Gemini CLI용 진입점. Rules는 `.codex/` 폴더와 공유합니다.
 >
-> **v2.4.2 변경**: Gemini CLI 지원 추가
+> **v2.4.3 변경**: 버전 정합성 통일
 
 ## Rules
 

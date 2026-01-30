@@ -1,5 +1,5 @@
 #!/bin/bash
-# Codex Rules v2.4.2 - 원커맨드 설치 스크립트 (Multi-CLI 버전)
+# Codex Rules v2.4.3 - 원커맨드 설치 스크립트 (Multi-CLI 버전)
 # 사용법: ./install.sh [workspace_root] [--codex|--gemini|--all] [--backup|--skip|--quit]
 # - workspace_root 미지정 시: 현재 디렉토리를 workspace로 사용하고 git에서 소스를 내려받음
 # - git 소스: CODEX_RULES_REPO_URL/CODEX_RULES_REF 환경변수로 오버라이드 가능
@@ -9,7 +9,7 @@
 #   --gemini  Gemini CLI만 설치
 #   --all     모두 설치 (기본값)
 #
-# 주요 변경 (v2.4.2):
+# 주요 변경 (v2.4.3):
 #   - Multi-CLI 지원: Codex CLI + Gemini CLI
 #   - CLI 선택 옵션 추가: --codex, --gemini, --all
 #   - GEMINI.md, .gemini/settings.json 생성 지원
@@ -92,7 +92,7 @@ fi
 # Resolve to absolute path
 WORKSPACE_ROOT="$(cd "$WORKSPACE_ROOT" 2>/dev/null && pwd || echo "$WORKSPACE_ROOT")"
 
-echo_info "Codex Rules v2.4.2 설치 시작 (Multi-CLI 버전)"
+echo_info "Codex Rules v2.4.3 설치 시작 (Multi-CLI 버전)"
 echo_info "Workspace: $WORKSPACE_ROOT"
 if [[ "$SOURCE_MODE" == "git" ]]; then
     echo_info "Source: git (${REPO_URL}${REPO_REF:+@$REPO_REF})"
@@ -219,8 +219,8 @@ if [[ ${#EXISTING_DIRS[@]} -gt 0 ]]; then
             echo ""
             echo "수동 설치 방법:"
             echo "  1. 기존 디렉토리 백업 또는 삭제"
-            echo "  2. 새 버전 압축 해제: unzip codex-rules-v2.4.2.zip -d /tmp"
-            echo "  3. 파일 복사: cp -r /tmp/codex-rules-v2.4.2/* $WORKSPACE_ROOT/"
+            echo "  2. 새 버전 압축 해제: unzip codex-rules-v2.4.3.zip -d /tmp"
+            echo "  3. 파일 복사: cp -r /tmp/codex-rules-v2.4.3/* $WORKSPACE_ROOT/"
             exit 0
             ;;
     esac
@@ -344,7 +344,7 @@ startup_timeout_sec = 15
 tool_timeout_sec = 30
 
 [mcp_servers.local-search.env]
-# Workspace root auto-detection (v2.4.2):
+# Workspace root auto-detection (v2.4.3):
 # 1. CODEX_WORKSPACE_ROOT env var (if set)
 # 2. Search for .codex-root from cwd upward
 # 3. Fallback to cwd
@@ -353,7 +353,7 @@ MCP_EOF
 
     if [[ ! -f ".codex/config.toml" ]]; then
         cat > ".codex/config.toml" << 'CFG_EOF'
-# Workspace-scoped Codex configuration (v2.4.2)
+# Workspace-scoped Codex configuration (v2.4.3)
 CFG_EOF
         echo "$MCP_BLOCK" >> ".codex/config.toml"
         echo_info "  config.toml 생성 + MCP 설정 추가"
@@ -375,38 +375,20 @@ CFG_EOF
 install_gemini_cli() {
     echo_step "Gemini CLI 파일 설치 중..."
     
-    # GEMINI.md (workspace root)
-    if [[ -f "$SOURCE_DIR/GEMINI.md" ]]; then
-        if [[ "$MODE" == "skip" && -f "GEMINI.md" ]]; then
-            echo_info "  GEMINI.md 건너뜀 (이미 존재)"
-        else
-            cp "$SOURCE_DIR/GEMINI.md" .
-            echo_info "  GEMINI.md 복사 완료"
-        fi
+    # Root GEMINI.md 생성
+    if [[ "$MODE" == "skip" && -f "GEMINI.md" ]]; then
+        echo_info "  GEMINI.md 건너뜀 (이미 존재)"
     else
-        # 소스에 없으면 생성
-        if [[ ! -f "GEMINI.md" ]]; then
-            cat > "GEMINI.md" << 'GEMINI_EOF'
-# Codex Rules v2.4.2 (Gemini CLI)
+        cat > "GEMINI.md" << 'GEMINI_EOF'
+# Codex Rules (Gemini CLI)
 
-> Gemini CLI용 진입점. Rules는 `.codex/` 폴더와 공유합니다.
->
-> **v2.4.2 변경**: Gemini CLI 지원 추가
+> 이 파일은 Gemini CLI 진입점입니다.
 
 ## Rules
 
 아래 규칙들이 자동으로 로드됩니다:
 
 @./.codex/rules/00-core.md
-
-## Quick Reference
-
-| 명령어 | 동작 |
-|--------|------|
-| `/memory show` | 로드된 컨텍스트 전체 확인 |
-| `/memory refresh` | 컨텍스트 파일 새로고침 |
-| `/mcp` | MCP 서버 상태 확인 |
-| `/help` | 도움말 |
 
 ## Local Search 사용법
 
@@ -415,23 +397,18 @@ Gemini CLI가 자동으로 local-search MCP 도구를 로드합니다.
 `/mcp` 명령으로 상태 확인.
 
 사용 가능한 도구:
-- **search**: 키워드/정규식으로 파일/코드 검색 (토큰 절감 핵심!)
+- **search**: 키워드/정규식으로 파일/코드 검색
 - **status**: 인덱스 상태 확인
 - **repo_candidates**: 관련 repo 후보 찾기
-
-### 토큰 절감 원칙
-파일 탐색 전 **반드시** local-search로 먼저 검색!
-- Before: 전체 탐색 → 12000 토큰
-- After: local-search → 900 토큰 (92% 절감)
 
 ## Scenarios
 
 | 시나리오 | 경로 |
 |----------|------|
-| S0 Simple Fix | `.codex/scenarios/s0-simple-fix.md` |
-| S1 Feature | `.codex/scenarios/s1-feature.md` |
-| S2 Cross-repo | `.codex/scenarios/s2-cross-repo.md` |
-| Hotfix | `.codex/scenarios/hotfix.md` |
+| S0 Simple Fix | .codex/scenarios/s0-simple-fix.md |
+| S1 Feature | .codex/scenarios/s1-feature.md |
+| S2 Cross-repo | .codex/scenarios/s2-cross-repo.md |
+| Hotfix | .codex/scenarios/hotfix.md |
 
 ## 디렉토리 구조
 
@@ -460,8 +437,7 @@ Codex CLI를 사용하시면 `.codex/AGENTS.md`를 참조하세요.
 - 온보딩: `.codex/quick-start.md`
 - 변경 이력: `docs/_meta/CHANGELOG.md`
 GEMINI_EOF
-            echo_info "  GEMINI.md 생성 완료"
-        fi
+        echo_info "  GEMINI.md 생성 완료"
     fi
 
     # .gemini/settings.json
@@ -482,12 +458,17 @@ GEMINI_EOF
   "context": {
     "fileName": ["GEMINI.md"]
   },
+  "models": {
+    "gemini-1.5-flash": { "preview": true },
+    "gemini-1.5-pro": { "preview": true },
+    "gemini-2.0-flash-exp": { "preview": true }
+  },
   "mcpServers": {
     "local-search": {
       "command": "python3",
       "args": [".codex/tools/local-search/mcp/server.py"],
       "timeout": 30000,
-      "trust": false
+      "trust": true
     }
   }
 }
@@ -561,7 +542,7 @@ if [[ "$CLI_MODE" == "codex" || "$CLI_MODE" == "all" ]]; then
         fi
     else
         echo "" >> "$SHELL_RC"
-        echo "# Codex Rules v2.4.2 - 자동 생성됨" >> "$SHELL_RC"
+        echo "# Codex Rules v2.4.3 - 자동 생성됨" >> "$SHELL_RC"
         echo "export CODEX_HOME=\"$WORKSPACE_ROOT/.codex\"" >> "$SHELL_RC"
         echo_info "  CODEX_HOME 환경변수 추가"
     fi
@@ -583,7 +564,7 @@ fi
 # Done
 echo ""
 echo_info "=========================================="
-echo_info "설치 완료! (v2.4.2 Multi-CLI 버전)"
+echo_info "설치 완료! (v2.4.3 Multi-CLI 버전)"
 echo_info "=========================================="
 echo ""
 echo "설치된 CLI: $CLI_MODE"
