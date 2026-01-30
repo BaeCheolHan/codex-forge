@@ -26,3 +26,7 @@ Thumbs.db
 codex-rules-v*-workspace-msa/
 codex-rules-v*-workspace-msa.zip
 .codex-backup-*/
+
+# Local search artifacts
+search_result.json
+test_repo/
