@@ -41,6 +41,18 @@ SOURCE_MODE="local"
 MODE=""
 BACKUP_DIR=""
 HAD_RULES="no"
+SOURCE_SNAPSHOT_DIR=""
+TEMP_DIR=""
+
+cleanup() {
+    if [[ -n "$TEMP_DIR" ]]; then
+        rm -rf "$TEMP_DIR"
+    fi
+    if [[ -n "$SOURCE_SNAPSHOT_DIR" ]]; then
+        rm -rf "$SOURCE_SNAPSHOT_DIR"
+    fi
+}
+trap cleanup EXIT
 
 # Parse arguments
 WORKSPACE_ROOT=""
@@ -90,18 +102,30 @@ if [[ -d ".codex/rules" ]]; then
     HAD_RULES="yes"
 fi
 
+# If installing from the same repo, snapshot source before any backups/moves.
+if [[ "$SOURCE_MODE" == "local" && "$SOURCE_DIR" == "$WORKSPACE_ROOT" ]]; then
+    SOURCE_SNAPSHOT_DIR="$(mktemp -d)"
+    for dir in ".codex" "docs"; do
+        if [[ -d "$SOURCE_DIR/$dir" ]]; then
+            cp -r "$SOURCE_DIR/$dir" "$SOURCE_SNAPSHOT_DIR/"
+        fi
+    done
+    for file in ".codex-root" "gitignore.sample"; do
+        if [[ -f "$SOURCE_DIR/$file" ]]; then
+            cp "$SOURCE_DIR/$file" "$SOURCE_SNAPSHOT_DIR/"
+        fi
+    done
+    SOURCE_DIR="$SOURCE_SNAPSHOT_DIR"
+    echo_info "Source: local snapshot ($SOURCE_DIR)"
+fi
+
 # Fetch source if needed
-TEMP_DIR=""
 if [[ "$SOURCE_MODE" == "git" ]]; then
     if ! command -v git &>/dev/null; then
         echo_error "git을 찾을 수 없습니다. 설치 경로를 인자로 전달하거나 git을 설치하세요."
         exit 1
     fi
     TEMP_DIR="$(mktemp -d)"
-    cleanup() {
-        rm -rf "$TEMP_DIR"
-    }
-    trap cleanup EXIT
     if [[ -n "$REPO_REF" ]]; then
         git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" "$TEMP_DIR"
     else

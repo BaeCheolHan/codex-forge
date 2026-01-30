@@ -25,3 +25,4 @@ Thumbs.db
 .codex-root
 codex-rules-v*-workspace-msa/
 codex-rules-v*-workspace-msa.zip
+.codex-backup-*/
