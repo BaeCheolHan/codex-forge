@@ -6,4 +6,4 @@
 - codex-forge (PROD-00001) → `docs/_shared/state/current-state.d/codex-forge.md`
 
 ## 최근 작업
-- [2026-01-30] PROD-00001 install.sh 단독 실행 + rules 덮어쓰기 프롬프트 + config 병합
+- [2026-01-30] PROD-00001 .gitignore 추가 (패키징/상태 파일 제외)
