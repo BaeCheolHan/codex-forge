@@ -8,6 +8,8 @@ docs/_shared/state/current-state.md
 docs/_shared/state/current-state.d/*.md
 docs/_shared/state/debt.md
 docs/_shared/state/state-log.md
+!docs/_shared/state/current-state.d/README.md
+!docs/_shared/state/current-state.d/_TEMPLATE.md
 
 # OS files
 .DS_Store
