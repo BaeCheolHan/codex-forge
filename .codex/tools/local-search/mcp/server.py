@@ -12,7 +12,7 @@ Usage:
   python3 .codex/tools/local-search/mcp/server.py
 
 Environment:
-  CODEX_WORKSPACE_ROOT - Workspace root directory (default: cwd)
+  LOCAL_SEARCH_WORKSPACE_ROOT - Workspace root directory (default: cwd)
 """
 import json
 import os
@@ -664,9 +664,10 @@ class LocalSearchMCPServer:
 
 
 def main() -> None:
-    workspace_root = os.environ.get("CODEX_WORKSPACE_ROOT")
+    workspace_root = os.environ.get("LOCAL_SEARCH_WORKSPACE_ROOT")
     
     if not workspace_root:
+        # Search for .codex-root marker from cwd
         cwd = Path.cwd()
         for parent in [cwd] + list(cwd.parents):
             if (parent / ".codex-root").exists():
