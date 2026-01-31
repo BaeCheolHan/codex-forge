@@ -37,6 +37,8 @@ class WorkspaceManager:
         # 2. Check environment variable
         workspace_root = os.environ.get("LOCAL_SEARCH_WORKSPACE_ROOT")
         if workspace_root:
+            if workspace_root.strip() == "${cwd}":
+                return str(Path.cwd())
             return workspace_root
         
         # 3. Search for .codex-root marker
