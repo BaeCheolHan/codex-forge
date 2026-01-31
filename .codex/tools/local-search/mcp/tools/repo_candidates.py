@@ -5,9 +5,10 @@ Repo candidates tool for Local Search MCP Server.
 import json
 from typing import Any, Dict
 from db import LocalSearchDB
+from telemetry import TelemetryLogger
 
 
-def execute_repo_candidates(args: Dict[str, Any], db: LocalSearchDB) -> Dict[str, Any]:
+def execute_repo_candidates(args: Dict[str, Any], db: LocalSearchDB, logger: TelemetryLogger = None) -> Dict[str, Any]:
     """Execute repo_candidates tool."""
     query = args.get("query", "")
     limit = min(int(args.get("limit", 3)), 5)
@@ -36,6 +37,9 @@ def execute_repo_candidates(args: Dict[str, Any], db: LocalSearchDB) -> Dict[str
         "hint": "Use 'repo' parameter in search to narrow down scope after selection",
     }
     
+    if logger:
+        logger.log_telemetry(f"tool=repo_candidates query='{query}' results={len(candidates)}")
+
     return {
         "content": [{"type": "text", "text": json.dumps(output, indent=2, ensure_ascii=False)}],
     }

@@ -162,9 +162,14 @@ class Indexer:
                     # Meta match?
                     if int(st.st_mtime) == int(prev_mtime) and int(st.st_size) == int(prev_size):
                         # AI Safety Net: If modified within last 3 seconds, force re-index
-                        # because sub-second changes might have same mtime/size in some FS
                         if now - st.st_mtime > 3.0:
                             is_changed = False
+                            # DEBUG: Log skipped file
+                            # if self.logger and scanned % 100 == 0:
+                            #     self.logger.log_info(f"Skipping unchanged file: {rel}")
+                else:
+                    if self.logger:
+                        self.logger.log_info(f"New file detected: {rel}")
                 
                 if not is_changed:
                     continue
@@ -202,6 +207,15 @@ class Indexer:
                 self.status.errors += 1
                 if self.logger:
                     self.logger.log_error(f"Error flushing batch: {e}")
+
+        # DEBUG: Log DB Stats
+        try:
+            db_status = self.db.get_index_status()
+            if self.logger:
+                self.logger.log_info(f"DB Stats after scan - Total Files: {db_status.get('total_files')}")
+        except Exception as e:
+            if self.logger:
+                self.logger.log_error(f"Failed to get DB stats: {e}")
 
         self.db.clear_stats_cache()
         self.status.last_scan_ts = time.time()

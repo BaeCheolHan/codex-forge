@@ -7,9 +7,10 @@ from typing import Any, Dict, Optional
 from db import LocalSearchDB
 from indexer import Indexer
 from config import Config
+from telemetry import TelemetryLogger
 
 
-def execute_status(args: Dict[str, Any], indexer: Optional[Indexer], db: Optional[LocalSearchDB], cfg: Optional[Config], workspace_root: str, server_version: str) -> Dict[str, Any]:
+def execute_status(args: Dict[str, Any], indexer: Optional[Indexer], db: Optional[LocalSearchDB], cfg: Optional[Config], workspace_root: str, server_version: str, logger: Optional[TelemetryLogger] = None) -> Dict[str, Any]:
     """Execute status tool."""
     details = bool(args.get("details", False))
     
@@ -35,6 +36,9 @@ def execute_status(args: Dict[str, Any], indexer: Optional[Indexer], db: Optiona
     
     if details and db:
         status["repo_stats"] = db.get_repo_stats()
+    
+    if logger:
+        logger.log_telemetry(f"tool=status details={details} scanned={status['scanned_files']} indexed={status['indexed_files']}")
     
     return {
         "content": [{"type": "text", "text": json.dumps(status, indent=2)}],
