@@ -5,13 +5,14 @@ import ipaddress
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
-def _load_server_info() -> dict | None:
+def _load_server_info() -> Optional[Dict]:
     """Load server.json if exists (single source of truth for actual port)."""
     root = _repo_root()
     server_json = root / "tools" / "local-search" / "data" / "server.json"
@@ -24,7 +25,7 @@ def _load_server_info() -> dict | None:
     return None
 
 
-def _load_cfg() -> dict:
+def _load_cfg() -> Dict:
     root = _repo_root()
     cfg_path = os.environ.get(
         "LOCAL_SEARCH_CONFIG",
@@ -34,7 +35,7 @@ def _load_cfg() -> dict:
         return json.load(f)
 
 
-def _get_host_port() -> tuple[str, int]:
+def _get_host_port() -> Tuple[str, int]:
     """Get host/port from server.json (preferred) or config.json (fallback)."""
     server_info = _load_server_info()
     if server_info:
@@ -64,7 +65,7 @@ def _enforce_loopback(host: str) -> None:
         )
 
 
-def _request(path: str, params: dict) -> dict:
+def _request(path: str, params: Dict) -> Dict:
     host, port = _get_host_port()
 
     _enforce_loopback(str(host))
@@ -75,7 +76,7 @@ def _request(path: str, params: dict) -> dict:
         return json.loads(r.read().decode("utf-8"))
 
 
-def main(argv: list[str]) -> int:
+def main(argv: List[str]) -> int:
     if len(argv) < 2:
         print("usage: query.py status|repo-candidates|search|rescan <q> [repo]", file=sys.stderr)
         return 2

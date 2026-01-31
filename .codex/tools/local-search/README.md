@@ -2,6 +2,8 @@
 
 > 오프라인 코드 인덱싱 및 검색 도구
 
+**Requirements**: Python 3.9+
+
 ## v2.5.0 변경사항 (DB 격리 + Pagination)
 
 ### DB 격리 (Critical)

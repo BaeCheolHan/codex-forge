@@ -8,7 +8,7 @@
 #   --codex   Codex CLI만 설치
 #   --gemini  Gemini CLI만 설치
 #   --all     모두 설치 (기본값)
-#   --update  MCP 도구와 룰만 업데이트 (docs 및 설정 유지)
+#   --update  local-search 도구만 git에서 최신 버전으로 업데이트 (설정 유지)
 #
 # 주요 변경 (v2.5.0):
 #   - Multi-CLI 지원: Codex CLI + Gemini CLI
@@ -87,7 +87,11 @@ if [[ -z "$WORKSPACE_ROOT" ]]; then
 fi
 
 # Prefer git source when local package structure is missing (install.sh only)
-if [[ ! -d "$SCRIPT_DIR/.codex" || ! -d "$SCRIPT_DIR/docs" ]]; then
+# --update 모드일 때는 항상 git에서 최신 버전을 받음
+if [[ "$MODE" == "update" ]]; then
+    SOURCE_MODE="git"
+    echo_info "업데이트 모드: git에서 최신 버전 다운로드"
+elif [[ ! -d "$SCRIPT_DIR/.codex" || ! -d "$SCRIPT_DIR/docs" ]]; then
     SOURCE_MODE="git"
 fi
 
@@ -191,8 +195,8 @@ done
 if [[ ${#EXISTING_DIRS[@]} -gt 0 ]]; then
     if [[ "$MODE" == "update" ]]; then
         echo_info "기존 설치 발견 (업데이트 모드 진행)"
-        echo_info "  - docs/ 및 사용자 설정은 보존됩니다."
-        echo_info "  - .codex/rules, .codex/tools는 최신 버전으로 교체됩니다."
+        echo_info "  - local-search 도구만 최신 버전으로 교체됩니다."
+        echo_info "  - docs/, rules/, CLI 설정은 보존됩니다."
     else
         echo_warn "기존 설치 발견: ${EXISTING_DIRS[*]}"
     fi
@@ -201,7 +205,7 @@ if [[ ${#EXISTING_DIRS[@]} -gt 0 ]]; then
         echo ""
         echo "선택하세요:"
         echo "  1) backup - 기존 파일 백업 후 덮어쓰기"
-        echo "  2) update - MCP 도구와 룰만 업데이트 (docs 보존)"
+        echo "  2) update - local-search 도구만 git에서 업데이트"
         echo "  3) skip   - 기존 디렉토리 유지"
         echo "  4) quit   - 설치 중단"
         echo ""
@@ -284,21 +288,47 @@ install_shared() {
                     cp "$SOURCE_DIR/.codex/$item" ".codex/$item"
                 fi
             done
-            for dir in tools scenarios skills; do
-                if [[ -d "$SOURCE_DIR/.codex/$dir" ]]; then
-                    if [[ "$MODE" == "update" && -d ".codex/$dir" ]]; then
-                        rm -rf ".codex/$dir"
+            # update 모드: local-search만 업데이트
+            if [[ "$MODE" == "update" ]]; then
+                if [[ -d "$SOURCE_DIR/.codex/tools/local-search" ]]; then
+                    # local-search만 교체 (config는 보존)
+                    if [[ -d ".codex/tools/local-search" ]]; then
+                        # config 백업
+                        if [[ -d ".codex/tools/local-search/config" ]]; then
+                            cp -r ".codex/tools/local-search/config" "/tmp/local-search-config-backup"
+                        fi
+                        rm -rf ".codex/tools/local-search"
                     fi
-                    cp -r "$SOURCE_DIR/.codex/$dir" ".codex/"
+                    cp -r "$SOURCE_DIR/.codex/tools/local-search" ".codex/tools/"
+                    # config 복원
+                    if [[ -d "/tmp/local-search-config-backup" ]]; then
+                        rm -rf ".codex/tools/local-search/config"
+                        mv "/tmp/local-search-config-backup" ".codex/tools/local-search/config"
+                    fi
+                    echo_info "  .codex/tools/local-search 업데이트 완료 (config 보존)"
                 fi
-            done
-            if [[ "$RULES_OVERWRITE" == "yes" ]]; then
-                if [[ "$MODE" == "update" && -d ".codex/rules" ]]; then
+            else
+                # 일반 설치 모드: 모든 도구 복사
+                for dir in tools scenarios skills; do
+                    if [[ -d "$SOURCE_DIR/.codex/$dir" ]]; then
+                        if [[ -d ".codex/$dir" ]]; then
+                            rm -rf ".codex/$dir"
+                        fi
+                        cp -r "$SOURCE_DIR/.codex/$dir" ".codex/"
+                    fi
+                done
+            fi
+            
+            # rules 처리 (update 모드에서는 건너뜀)
+            if [[ "$MODE" != "update" && "$RULES_OVERWRITE" == "yes" ]]; then
+                if [[ -d ".codex/rules" ]]; then
                     rm -rf ".codex/rules"
                 fi
                 if [[ -d "$SOURCE_DIR/.codex/rules" ]]; then
                     cp -r "$SOURCE_DIR/.codex/rules" ".codex/"
                 fi
+            elif [[ "$MODE" == "update" ]]; then
+                echo_info "  .codex/rules 건너뜀 (업데이트 모드)"
             else
                 echo_info "  .codex/rules 건너뜀 (사용자 선택)"
                 if [[ -n "$BACKUP_DIR" && -d "$BACKUP_DIR/.codex/rules" ]]; then
