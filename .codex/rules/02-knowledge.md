@@ -17,10 +17,8 @@
 | 종류 | 경로 |
 |------|------|
 | 교훈 | `docs/_shared/lessons-learned/lessons-learned.md` |
-| 교훈 인덱스 | `docs/_shared/lessons-learned/lessons-learned-index.md` |
 | 통합 ERD | `docs/_shared/erd/erd.md` |
 | 용어집 | `docs/_shared/glossary/glossary.md` |
-| 스킬 인덱스 | `docs/_shared/skills/skills-index.md` |
 
 ### 로컬 (비커밋)
 | 종류 | 경로 |
@@ -47,7 +45,7 @@
 2. lessons: 태그 매칭 우선 ≤10줄
 3. debt: 태그 매칭 우선 ≤20줄
 
-### Index ↔ Repo 연결
+### State ↔ Repo 연결
 - Active scope 확정 시 `current-state.md`에 `current-state.d/<repo>.md` 링크 1줄 포함
 - 링크 누락 시 다음 턴 첫 액션으로 보완
 
@@ -55,9 +53,30 @@
 
 ## Write Rules
 
+> [!CAUTION]
+> 아래 규칙 위반 시 문서 작성 **무효 처리**
+
+### 델타 정책 (토큰 절감)
+- [MUST] **델타 기록 우선**: 기존 문서 재요약 금지. 신규 발견/변경점만 추가.
+- [MUST] **중복 방지**: 동일 내용은 링크/키워드 참조로 대체. 본문 재서술 금지.
+- [MUST] **근거 최소화**: 근거 파일은 리스트만 기재. 본문 인용/재서술 금지.
+
+### 참조 형식
+- 경로 링크: `→ docs/api/xxx.md`
+- 인덱스 참조: `[lessons:L042]`, `[debt:L015]`
+
+### 기본 규칙
 - 파일 폭증 금지: state는 overwrite 기본
 - 업데이트는 '사실/결정/다음 액션'만 (장문 금지)
 - 문서 1개당 ≤120줄
+
+### 신규 기록 포맷 (3블록)
+```
+**신규 발견**: [1~3줄]
+**영향**: [1~2줄]
+**다음 액션**: [1줄]
+```
+→ 1개 항목당 총 6줄 이내
 
 ### 상한
 
@@ -68,6 +87,7 @@
 | state (index) | ≤6줄 (S1+는 ≤8줄) |
 | state (repo) | 상단 12줄 요약 유지 |
 | plan 파일 | ≤200줄 (초과 시 요약 20줄로 압축) |
+
 
 ---
 
@@ -115,6 +135,3 @@
 - 금지: 전체 트리/장문
 - 갱신: 구조/빌드/모듈 변경 시만
 
-### skills-index 등록
-- 새 스킬 생성 시 `docs/_shared/skills/skills-index.md`에 1줄 등록
-- 형식: `S-NNN [tags] <skill-name> — when to use / inputs / outputs`

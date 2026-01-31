@@ -1,8 +1,8 @@
-# Codex Rules v2.5.0
+# Codex Rules
 
-> Codex CLI 진입점. 공유 룰은 `.codex/rules/`에 있습니다.
+> Codex CLI 진입점. 버전 정보는 `README.md`를 참조하세요.
 >
-> **v2.5.0 변경**: Multi-CLI 지원 및 버전 정합성 통일
+> 공유 룰은 `.codex/rules/`에 있습니다.
 
 ## 핵심 규칙
 

@@ -10,13 +10,14 @@
 ## A. Preflight (Change/Run 전)
 
 - [ ] [MUST] **Intent 고정**: 목표/제약/금지를 1~2줄로 재진술
-- [ ] [MUST] **진행 의도 확인**: `/code` 토글 활성 + 타겟 repo 지정 (v2.3.2: 자연어 신호만으로 불충분)
+- [ ] [MUST] **진행 의도 확인**: 변경 의사 + 타겟 repo 지정 (`03-gate.md` 3단계 게이트 참조)
 - [ ] [MUST] **최종 승인**: 스케일 고지 + 사용자 "approve execute" (또는 명시적 승인) 확인
 - [ ] [MUST] **Local Search 우선**: 파일 탐색 전 local-search 먼저 (토큰 절감)
 - [ ] [IF] **위험 행동 재확인**: 파괴/외부/대규모면 1회 재확인 완료
 - [ ] [IF] **Knowledge 확인**:
   - S0: `current-state.md` ≤6줄만 (lessons/debt 자동 읽기 금지)
   - S1+: lessons ≤10줄, debt ≤20줄, state ≤12줄
+  - **S1+ 설계 시**: local-search로 관련 API/ERD/glossary 검색 (버그 방지)
 
 ---
 
@@ -41,13 +42,19 @@
 
 ### C.3. 문서 업데이트
 
-**변경 유형 선언**: Code / API / Data / Enum-Status / Process
+> [!CAUTION]
+> **S1+ 규모에서 문서 미작성 시 작업 미완료 처리**
+
+**변경 유형 선언** [MUST]: Code / API / Data / Enum-Status / Process
 
 | 스케일 | 필수 업데이트 |
 |--------|---------------|
 | S0 (코드 변경 있음) | 경로 목록 + `current-state` ≤6줄 |
 | S0 (코드 변경 없음) | N/A (단, Knowledge Capture 트리거 시 문서 저장) |
-| S1+ | lessons/debt/state 전부 업데이트 |
+| S1+ | lessons/debt/state 전부 업데이트 **[MUST-BLOCK]** |
+
+- [ ] [MUST] **델타 정책 준수**: 재요약/재서술 없음, 3블록 포맷 사용
+
 
 **유형별 최소 업데이트**:
 - Code: `current-state.md` 갱신

@@ -1,6 +1,15 @@
-# Codex Rules v2.5.0
+# Codex Forge v2.6.0
+
+> AI 코딩 에이전트를 위한 규칙 프레임워크
 
 MSA 환경에서 AI CLI(Codex CLI, Gemini CLI)를 효과적으로 사용하기 위한 룰셋입니다.
+
+## 핵심 목표
+
+- **토큰 절감**: local-search로 불필요한 탐색 최소화 (30-50% 절감)
+- **버그 감소**: 지식 문서(lessons/API/ERD/glossary) 참조로 재실수 방지
+- **코드 품질**: Phase Prompt로 개발 흐름(분석→설계→리뷰→코딩→테스트) 자연스럽게 유도
+- **안전한 변경**: 3단계 승인 게이트 + 증거 기반 완료
 
 ## 빠른 시작
 
@@ -30,10 +39,10 @@ curl -fsSL https://raw.githubusercontent.com/BaeCheolHan/codex-forge/main/instal
 
 ## 주요 기능
 
-- **토큰 절감**: local-search MCP로 파일 탐색 최소화 (30-50% 절감)
-- **안전한 게이트**: 3단계 승인 프로세스 (`/code` → 타겟 → 스케일 확인)
-- **MSA 지원**: 멀티 레포지토리 환경에서 타겟 서비스 명시
-- **지식 누적**: docs/ 자동 문서화
+- **Local Search 우선**: 파일 탐색 전 local-search MCP 필수 사용
+- **지식 누적**: lessons/debt/state 자동 문서화로 재탐색 방지
+- **Phase Prompt**: S1+ 작업 시 단계별 흐름 자연스럽게 제안
+- **MSA 타겟팅**: 멀티 레포지토리 환경에서 타겟 서비스 명시
 - **Multi-CLI**: Codex CLI와 Gemini CLI 모두 지원
 
 ## 구조

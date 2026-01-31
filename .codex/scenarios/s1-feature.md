@@ -32,6 +32,7 @@
 - [ ] lessons ≤10줄 확인
 - [ ] debt ≤20줄 확인
 - [ ] current-state ≤12줄 확인
+- [ ] **관련 API/ERD/glossary 검색** (버그 방지)
 
 ---
 

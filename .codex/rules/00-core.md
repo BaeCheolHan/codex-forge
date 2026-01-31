@@ -13,9 +13,9 @@
 |------|------|
 | P0 | 안전/보안/데이터 파괴 방지 |
 | P1 | 정확성/무결성/버그 최소화 |
-| P2 | 범위/통제/비용(토큰/변경량) |
+| P2 | 문서화/지식 누적 |
 | P3 | 속도/편의 |
-| P4 | 문서/지식 |
+| P4 | 범위/통제/비용(토큰/변경량) |
 
 ## 용어
 - **Workspace root**: `.codex-root`가 있는 디렉토리
@@ -66,7 +66,7 @@
 ## MSA 타겟팅 (P0)
 - repo/service 미지정이면 **Change/Read Expand 금지**
 - 후보 2~3개 제시 → 사용자 선택 → Active scope 고정
-- **후보 제시 순서**: (1) local-search `/repo-candidates` (2) skills-index.md (3) 1depth+README
+- **후보 제시 순서**: (1) local-search `/repo-candidates` (2) 1depth+README
 
 ## Local Search 우선 원칙 (P2: 토큰 절감)
 
@@ -86,6 +86,7 @@ MCP 미등록 시: `python3 .codex/tools/local-search/scripts/query.py search "k
 | 파일 위치 모름 | local-search `search` 먼저 | Glob 전체 탐색 |
 | 키워드 검색 | local-search > grep | 추측 경로 접근 |
 | Cross-repo 탐색 | local-search로 전체 검색 | 수동 탐색 |
+| **지식 문서 조회** | local-search로 검색 (lessons/glossary/API/ERD) | 직접 경로 접근 |
 
 ### 예시: Before vs After
 
@@ -105,69 +106,15 @@ AI: local-search "login auth" → 3개 파일 → 900 토큰 (92% 절감)
 - local-search 결과 0건 → Glob 허용
 - local-search 서버 미응답 → grep 허용 (에러 로그 명시)
 
-## 행동 모드
+## 게이트 & 워크플로우
 
-| 토글 | 동작 |
-|------|------|
-| `@path` | 파일 찾기/네비게이션 |
-| `스킬 OFF/ON` | 스킬 기능 kill-switch |
+> 상세 내용: `03-gate.md`
 
-## 진행 의도 게이트 (v2.3.3 명확화)
-
-### 기본 모드: Plan-only
-**모든 대화는 기본적으로 Plan-only 모드로 시작**. 소스코드/환경설정 Change/Run은 명시적 승인 필요.
-
-### 승인 단계 (3단계 게이트)
-
-| 단계 | 조건 | 상태 |
-|------|------|------|
-| 1단계 | 변경 의사 확인 | 변경 가능 모드 진입 |
-| 2단계 | repo/service 지정 | 타겟 확정 |
-| 3단계 | 스케일 고지 + 사용자 확인 | **최종 승인** |
-
-**중요**: 3단계 모두 통과해야 최종 승인.
-
-### 자연어 신호 (참고용, 승인 아님)
-- **진행 힌트**: 진행/적용/반영/구현/수정/고쳐/리팩토링/해결/만들어/추가해
-  → 변경 승인 요청 응답 생성
-- **Plan-only 강제**: 계획만/설계만/리뷰만/코드 변경하지 마/분석만
-  → Change 완전 금지
-
-### 위험 행동 (추가 게이트)
-변경 승인 상태에서도 아래는 **1회 재확인 필수**:
-- 파괴/비가역: 삭제/DDL/마이그레이션/데이터 덮어쓰기
-- 외부 영향: 배포/인프라/네트워크/시크릿 노출
-- 대규모: S2+ 예상(11+ files) 또는 3000 LOC 근접
-
-### 오작동 방지 예시
-```
-User: "로그인 코드 수정해줘"
-AI: [1단계 미통과] 수정 계획을 제안합니다. 진행 의사를 확인할게요.
-
-User: "auth-service"
-AI: [2단계 통과] 타겟: auth-service. 예상 S1 규모(4 files, ~200 LOC).
-    진행할까요? ("approve execute" 또는 "run confirmed"로 승인해주세요)
-
-User: "approve execute"
-AI: [3단계 통과 - 최종 승인] 변경을 시작합니다.
-```
-
-## 증거 규칙
-
-| 작업 | 필요 증거 |
-|------|-----------|
-| Change | 경로 + diff (1~3 hunk) |
-| Run | 명령 + 출력 (≤10줄) |
-
-**완료/해결/확인은 증거 없이 선언 금지**. 애매하면 `확인 불가` 라벨링.
-
-## Run 정책 (SAFE)
-
-**허용**: git status/diff/show, rg/grep, mvn test, ./gradlew test, npm test, pytest, local-search 관련
-
-**금지**: rm, sudo, kubectl, helm, terraform, DB 접속/DDL/DML, curl/wget (local-search 예외)
-
-SAFE 외 명령은 **1회 재확인** 필수.
+- 진행 의도 게이트 (3단계 승인)
+- Phase Prompt (S1+ 개발 흐름)
+- 증거 규칙
+- Run 정책 (SAFE)
+- Design Review 트리거
 
 ## 토큰/비용 절감
 
@@ -184,6 +131,7 @@ SAFE 외 명령은 **1회 재확인** 필수.
 ## Knowledge Capture
 - `docs/**` 산출물은 **한국어** (코드 식별자는 영문 유지)
 - "분석/설계/API 분석" 요청 시 코드 변경 없어도 **문서 저장 필수**
+- **S1+ 완료 시 문서 미작성 = 작업 미완료로 간주**
 - 채팅 출력: 요약(≤8줄) + 저장 경로 목록만
 
 ## 산출물 경로
@@ -196,13 +144,6 @@ SAFE 외 명령은 **1회 재확인** 필수.
 | 통합 ERD | `docs/_shared/erd/erd.md` |
 | 용어집 | `docs/_shared/glossary/glossary.md` |
 | 교훈 | `docs/_shared/lessons-learned/lessons-learned.md` |
-
-## Design Review 트리거
-아래 중 하나면 Change 전 Design Review 선행:
-- 동작 변경 (비즈니스 로직/정책)
-- 계약 변경 (API/DTO/스키마/에러코드)
-- 성능/동시성/트랜잭션 변경
-- 범위 S1+
 
 ## 환각 억제
 - 완료/해결/확인은 **재현 가능한 증거** 필수
