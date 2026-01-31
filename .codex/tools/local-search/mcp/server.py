@@ -67,7 +67,7 @@ class LocalSearchMCPServer:
                     scan_interval_seconds=180,
                     snippet_max_lines=5,
                     max_file_bytes=800000,
-                    db_path=str(Path(self.workspace_root) / ".codex" / "tools" / "local-search" / "data" / "index.db"),
+                    db_path=str(self._get_global_db_path()),
                     include_ext=[".py", ".js", ".ts", ".java", ".kt", ".go", ".rs", ".md", ".json", ".yaml", ".yml", ".sh"],
                     include_files=["pom.xml", "package.json", "Dockerfile", "Makefile", "build.gradle", "settings.gradle"],
                     exclude_dirs=[".git", "node_modules", "__pycache__", ".venv", "venv", "target", "build", "dist", "coverage", "vendor"],
@@ -76,14 +76,12 @@ class LocalSearchMCPServer:
                     commit_batch_size=500,
                 )
             
-            workspace_db_path = Path(self.workspace_root) / ".codex" / "tools" / "local-search" / "data" / "index.db"
-            
             debug_db_path = os.environ.get("LOCAL_SEARCH_DB_PATH", "").strip()
             if debug_db_path:
                 self._log_info(f"Using debug DB path override: {debug_db_path}")
                 db_path = Path(os.path.expanduser(debug_db_path))
             else:
-                db_path = workspace_db_path
+                db_path = self._get_global_db_path()
             
             db_path.parent.mkdir(parents=True, exist_ok=True)
             self.db = LocalSearchDB(str(db_path))
@@ -114,9 +112,9 @@ class LocalSearchMCPServer:
         print(f"[local-search] INFO: {message}", file=sys.stderr, flush=True)
 
     def _log_telemetry(self, message: str) -> None:
-        """Log telemetry to local-search/logs/local-search.log"""
+        """Log telemetry to ~/.local/share/local-search/logs/local-search.log"""
         try:
-            log_dir = Path(self.workspace_root) / "local-search" / "logs"
+            log_dir = self._get_global_data_dir() / "logs"
             log_dir.mkdir(parents=True, exist_ok=True)
             log_file = log_dir / "local-search.log"
             
@@ -126,7 +124,24 @@ class LocalSearchMCPServer:
         except Exception as e:
             self._log_error(f"Failed to log telemetry: {e}")
     
+    def _get_global_data_dir(self) -> Path:
+        """Get global data directory: ~/.local/share/local-search/"""
+        return Path.home() / ".local" / "share" / "local-search"
+    
+    def _get_global_db_path(self) -> Path:
+        """Get global DB path: ~/.local/share/local-search/index.db"""
+        return self._get_global_data_dir() / "index.db"
+    
     def handle_initialize(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        # Parse rootUri from client (LSP/MCP standard)
+        root_uri = params.get("rootUri") or params.get("rootPath")
+        if root_uri:
+            if root_uri.startswith("file://"):
+                self.workspace_root = root_uri[7:]  # Remove file:// prefix
+            else:
+                self.workspace_root = root_uri
+            self._log_info(f"Workspace set from rootUri: {self.workspace_root}")
+        
         return {
             "protocolVersion": self.PROTOCOL_VERSION,
             "serverInfo": {
