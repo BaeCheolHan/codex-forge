@@ -1,14 +1,23 @@
 # Codex Rules v2.5.0 (Gemini CLI)
 
-> Gemini CLI용 진입점. Rules는 `.codex/` 폴더와 공유합니다.
+> Gemini CLI용 진입점. **Gemini 강화 룰셋** 사용.
 >
 > **v2.5.0 변경**: 버전 정합성 통일
 
 ## Rules
 
+> [!NOTE]
+> Gemini CLI는 규칙 준수 강화를 위해 `.gemini/rules/` 전용 룰셋 사용
+
 아래 규칙들이 자동으로 로드됩니다:
 
-@./.codex/rules/00-core.md
+@./.gemini/rules/00-core.md
+
+**Gemini 강화 룰셋 특징:**
+- 모든 핵심 정책에 CAUTION 경고 블록
+- MUST 라벨 강화
+- 예시 2~3배 확장
+- "위반 시 작업 중단" 명시
 
 ## Quick Reference
 
@@ -49,12 +58,13 @@ Gemini CLI가 자동으로 local-search MCP 도구를 로드합니다.
 ```
 workspace/
 ├── .codex-root          # 마커
-├── .codex/              # 룰셋/도구 (공유)
-│   ├── rules/           # 정책 (Gemini CLI도 사용)
+├── .codex/              # 룰셋/도구 (Codex 최적화)
+│   ├── rules/           # Codex CLI 룰셋
 │   ├── scenarios/       # 시나리오 가이드
 │   ├── skills/          # 스킬
 │   └── tools/           # local-search 등
-├── .gemini/             # Gemini CLI 설정
+├── .gemini/             # Gemini CLI 전용
+│   ├── rules/           # Gemini 강화 룰셋
 │   └── settings.json
 ├── GEMINI.md            # 이 파일
 ├── docs/                # 공유 문서
