@@ -98,7 +98,7 @@ class LocalSearchMCPServer:
             self.db = LocalSearchDB(str(db_path))
             self.logger.log_info(f"DB path: {db_path}")
             
-            self.indexer = Indexer(self.cfg, self.db)
+            self.indexer = Indexer(self.cfg, self.db, self.logger)
             
             self._indexer_thread = threading.Thread(target=self.indexer.run_forever, daemon=True)
             self._indexer_thread.start()

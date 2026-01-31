@@ -16,6 +16,11 @@ except ImportError:
     from config import Config  # type: ignore
     from db import LocalSearchDB  # type: ignore
 
+# Add logging support
+if False: # Type checking only
+    from .telemetry import TelemetryLogger
+
+
 
 @dataclass
 class IndexStatus:
@@ -60,9 +65,10 @@ def _redact(text: str) -> str:
 
 
 class Indexer:
-    def __init__(self, cfg: Config, db: LocalSearchDB):
+    def __init__(self, cfg: Config, db: LocalSearchDB, logger=None):
         self.cfg = cfg
         self.db = db
+        self.logger = logger
         self.status = IndexStatus()
         self._stop = threading.Event()
         self._rescan = threading.Event()
@@ -91,8 +97,14 @@ class Indexer:
 
     def _scan_once(self) -> None:
         root = Path(os.path.expanduser(self.cfg.workspace_root)).resolve()
+        
+        if self.logger:
+            self.logger.log_info(f"Starting scan of {root}")
+
         if not root.exists() or not root.is_dir():
             self.status.errors += 1
+            if self.logger:
+                self.logger.log_error(f"Root path does not exist: {root}")
             return
 
         # 1. Collect all candidate files with stat info for prioritization
@@ -103,8 +115,13 @@ class Indexer:
                 if st.st_size > self.cfg.max_file_bytes:
                     continue
                 file_entries.append((file_path, st))
-            except Exception:
+            except Exception as e:
+                if self.logger:
+                    self.logger.log_error(f"Error accessing file {file_path}: {e}")
                 continue
+        
+        if self.logger:
+            self.logger.log_info(f"Scan found {len(file_entries)} candidates")
         
         # 2. Prioritize: Recent files first + Core files (v2.5.0)
         now = time.time()
@@ -172,20 +189,27 @@ class Indexer:
                     indexed += len(batch)
                     batch.clear()
 
-            except Exception:
+            except Exception as e:
                 self.status.errors += 1
+                if self.logger:
+                    self.logger.log_error(f"Error indexing file {file_path}: {e}")
 
         if batch:
             try:
                 self.db.upsert_files(batch)
                 indexed += len(batch)
-            except Exception:
+            except Exception as e:
                 self.status.errors += 1
+                if self.logger:
+                    self.logger.log_error(f"Error flushing batch: {e}")
 
         self.db.clear_stats_cache()
         self.status.last_scan_ts = time.time()
         self.status.scanned_files = scanned
         self.status.indexed_files = indexed
+        
+        if self.logger:
+            self.logger.log_info(f"Scan complete. Scanned: {scanned}, Indexed: {indexed}, Errors: {self.status.errors}")
 
     def _process_meta_file(self, file_path: Path, repo: str) -> None:
         """Extract metadata from config files (v2.4.3)."""

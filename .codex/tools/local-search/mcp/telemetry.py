@@ -21,12 +21,14 @@ class TelemetryLogger:
         self.log_dir = log_dir
     
     def log_error(self, message: str) -> None:
-        """Log error message to stderr."""
+        """Log error message to stderr and file."""
         print(f"[local-search] ERROR: {message}", file=sys.stderr, flush=True)
+        self._write_to_file(f"[ERROR] {message}")
     
     def log_info(self, message: str) -> None:
-        """Log info message to stderr."""
+        """Log info message to stderr and file."""
         print(f"[local-search] INFO: {message}", file=sys.stderr, flush=True)
+        self._write_to_file(f"[INFO] {message}")
     
     def log_telemetry(self, message: str) -> None:
         """
@@ -35,6 +37,10 @@ class TelemetryLogger:
         Args:
             message: Telemetry message to log
         """
+        self._write_to_file(message)
+
+    def _write_to_file(self, message: str) -> None:
+        """Helper to write message with timestamp to log file."""
         if not self.log_dir:
             return
         
@@ -46,4 +52,4 @@ class TelemetryLogger:
             with open(log_file, "a", encoding="utf-8") as f:
                 f.write(f"[{timestamp}] {message}\n")
         except Exception as e:
-            self.log_error(f"Failed to log telemetry: {e}")
+            print(f"[local-search] ERROR: Failed to log to file: {e}", file=sys.stderr, flush=True)
