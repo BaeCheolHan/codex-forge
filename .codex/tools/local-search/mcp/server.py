@@ -21,6 +21,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from datetime import datetime
 
 # Add parent directories to path for imports
 SCRIPT_DIR = Path(__file__).parent
@@ -111,6 +112,19 @@ class LocalSearchMCPServer:
     
     def _log_info(self, message: str) -> None:
         print(f"[local-search] INFO: {message}", file=sys.stderr, flush=True)
+
+    def _log_telemetry(self, message: str) -> None:
+        """Log telemetry to .codex/log/local-search.log"""
+        try:
+            log_dir = Path(self.workspace_root) / ".codex" / "log"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_file = log_dir / "local-search.log"
+            
+            timestamp = datetime.now().astimezone().isoformat()
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(f"[{timestamp}] {message}\n")
+        except Exception as e:
+            self._log_error(f"Failed to log telemetry: {e}")
     
     def handle_initialize(self, params: Dict[str, Any]) -> Dict[str, Any]:
         return {
@@ -294,6 +308,7 @@ class LocalSearchMCPServer:
     
     def _tool_search(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Execute enhanced search tool (v2.5.0)."""
+        start_ts = time.time()
         query = args.get("query", "")
         
         if not query.strip():
@@ -460,6 +475,13 @@ class LocalSearchMCPServer:
             
             output["hints"] = hints
         
+        
+        # Telemetry: Log search stats
+        latency_ms = int((time.time() - start_ts) * 1000)
+        snippet_chars = sum(len(r.get("snippet", "")) for r in results)
+        
+        self._log_telemetry(f"tool=search query='{opts.query}' results={len(results)} snippet_chars={snippet_chars} latency={latency_ms}ms")
+
         return {
             "content": [{"type": "text", "text": json.dumps(output, indent=2, ensure_ascii=False)}],
         }
@@ -527,6 +549,7 @@ class LocalSearchMCPServer:
         }
     
     def _tool_list_files(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        start_ts = time.time()
         files, meta = self.db.list_files(
             repo=args.get("repo"),
             path_pattern=args.get("path_pattern"),
@@ -541,8 +564,16 @@ class LocalSearchMCPServer:
             "meta": meta,
         }
         
+        json_output = json.dumps(output, indent=2, ensure_ascii=False)
+        
+        # Telemetry: Log list_files stats
+        latency_ms = int((time.time() - start_ts) * 1000)
+        payload_bytes = len(json_output.encode('utf-8'))
+        repo_val = args.get("repo", "all")
+        self._log_telemetry(f"tool=list_files repo='{repo_val}' files={len(files)} payload_bytes={payload_bytes} latency={latency_ms}ms")
+        
         return {
-            "content": [{"type": "text", "text": json.dumps(output, indent=2, ensure_ascii=False)}],
+            "content": [{"type": "text", "text": json_output}],
         }
     
     def handle_request(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
