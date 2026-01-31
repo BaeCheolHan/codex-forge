@@ -22,9 +22,6 @@
       "args": [
         ".codex/tools/local-search/mcp/server.py"
       ],
-      "env": {
-        "LOCAL_SEARCH_WORKSPACE_ROOT": "${cwd}"
-      },
       "timeout": 30000,
       "trust": true
     }

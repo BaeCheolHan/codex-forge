@@ -114,9 +114,9 @@ class LocalSearchMCPServer:
         print(f"[local-search] INFO: {message}", file=sys.stderr, flush=True)
 
     def _log_telemetry(self, message: str) -> None:
-        """Log telemetry to .codex/log/local-search.log"""
+        """Log telemetry to local-search/logs/local-search.log"""
         try:
-            log_dir = Path(self.workspace_root) / ".codex" / "log"
+            log_dir = Path(self.workspace_root) / "local-search" / "logs"
             log_dir.mkdir(parents=True, exist_ok=True)
             log_file = log_dir / "local-search.log"
             
