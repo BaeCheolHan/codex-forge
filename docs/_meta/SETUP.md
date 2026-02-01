@@ -1,8 +1,8 @@
 # SETUP (v2.5.0)
 
-> 이 문서는 포인터가 아니라 **정본**이다. 이 zip만으로 설치(1회)·적용(repo별)·진단(status)·업데이트까지 끝낸다.
+이 문서는 포인터가 아니라 **정본**이다. 이 zip만으로 설치(1회)·적용(repo별)·진단(status)·업데이트까지 끝낸다.
 >
-> **v2.5.0 핵심 변경**: Multi-CLI 지원 (Codex/Gemini) 및 버전 정합성 통일.
+**v2.5.0 핵심 변경**: Multi-CLI 지원 (Codex/Gemini) 및 버전 정합성 통일.
 
 ---
 
@@ -38,8 +38,8 @@ CODEX_RULES_REF="main" \
 ./install.sh
 ```
 
-> 설치 중 기존 rules 덮어쓰기 여부를 묻습니다. "no"를 선택하면 rules만 유지되고 나머지는 적용됩니다.  
-> `.codex/config.toml`은 덮어쓰지 않으며, 필요한 MCP 설정만 병합됩니다.
+설치 중 기존 rules 덮어쓰기 여부를 묻습니다. "no"를 선택하면 rules만 유지되고 나머지는 적용됩니다.  
+`.codex/config.toml`은 덮어쓰지 않으며, 필요한 MCP 설정만 병합됩니다.
 
 ### 방법 B: 수동 설치
 

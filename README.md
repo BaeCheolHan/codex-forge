@@ -1,6 +1,6 @@
 # Codex Forge v2.6.0
 
-> AI 코딩 에이전트를 위한 규칙 프레임워크
+AI 코딩 에이전트를 위한 규칙 프레임워크
 
 MSA 환경에서 AI CLI(Codex CLI, Gemini CLI)를 효과적으로 사용하기 위한 룰셋입니다.
 

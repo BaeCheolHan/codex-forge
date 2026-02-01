@@ -1,7 +1,7 @@
 # Quick Start (5분 가이드)
 
-> 이 문서는 Codex Rules의 핵심을 5분 안에 파악하기 위한 온보딩 가이드다.
-> 상세 규칙은 `.codex/rules/00-core.md`를 참고한다.
+이 문서는 Codex Rules의 핵심을 5분 안에 파악하기 위한 온보딩 가이드다.
+상세 규칙은 `.codex/rules/00-core.md`를 참고한다.
 
 ---
 

@@ -1,6 +1,6 @@
 # Local Search
 
-> 오프라인 코드 인덱싱 및 검색 도구
+오프라인 코드 인덱싱 및 검색 도구
 
 **Requirements**: Python 3.9+
 
@@ -115,8 +115,8 @@ curl http://127.0.0.1:47777/status
 # 포트를 변경했다면 status 출력의 port 값을 사용
 ```
 
-> **참고**: HTTP 서버(`app/main.py`)와 MCP 서버(`mcp/server.py`)는 별개입니다.
-> MCP 서버는 STDIO 프로토콜을 사용하고, HTTP 서버는 REST API를 사용합니다.
+**참고**: HTTP 서버(`app/main.py`)와 MCP 서버(`mcp/server.py`)는 별개입니다.
+MCP 서버는 STDIO 프로토콜을 사용하고, HTTP 서버는 REST API를 사용합니다.
 
 ## 환경변수
 
@@ -191,7 +191,7 @@ curl http://127.0.0.1:47777/status
 }
 ```
 
-> v2.3.3+: 기본 캐시 경로는 `~/.cache/local-search/`이며, 레거시 `~/.cache/codex-local-search/`는 자동 마이그레이션됨.
+v2.3.3+: 기본 캐시 경로는 `~/.cache/local-search/`이며, 레거시 `~/.cache/codex-local-search/`는 자동 마이그레이션됨.
 
 ## MCP 도구
 
